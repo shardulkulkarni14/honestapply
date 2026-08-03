@@ -79,10 +79,26 @@ network and no browser, and prints a table of what each stage produced.
 
 ## Running it for real
 
-1. **Pick an LLM provider** in `.env`. `LLM_PROVIDER=claude_cli` needs **no API key** —
-   it reuses your local Claude Code login. Otherwise set `ANTHROPIC_API_KEY=...` with
-   `LLM_PROVIDER=anthropic` (default; `gemini` is the near-free fallback). Without any
-   of these you can still run `discover`/`enrich` and `simulate`.
+1. **Pick an LLM provider** in `.env`. Three ways to avoid an API key entirely:
+   `LLM_PROVIDER=claude_cli` reuses your local Claude Code login; or point
+   `OPENAI_BASE_URL` at any OpenAI-compatible server; or run neither and use
+   `simulate`. Otherwise set `ANTHROPIC_API_KEY=...` with `LLM_PROVIDER=anthropic`
+   (default; `gemini` is the near-free fallback).
+
+   ```bash
+   # Local, no key, nothing leaves the machine
+   LLM_PROVIDER=openai
+   OPENAI_BASE_URL=http://localhost:11434/v1   # Ollama; LM Studio, vLLM, llama.cpp alike
+   OPENAI_MODEL=qwen3:14b
+   ```
+
+   The same field reaches OpenRouter, Groq, Together, DeepSeek and Fireworks.
+   **Read this before going fully local:** the immutable-facts validator makes a
+   weak model's fabrication fail loudly when tailoring a résumé, but cover letters
+   have no equivalent hard check, and smaller models over-claim more and more
+   quietly. Local inference is a good fit for the high-volume scoring pass; it is a
+   bad fit for the browser apply loop, where a mistake is a real submission to a
+   real employer.
 2. **Fill in your profile**: edit `config/profile.json`. Search for the `_TODO_confirm`
    array — those fields (visa type, salary range, postal code, notice period, relocation,
    references, start date) are placeholders you must set.

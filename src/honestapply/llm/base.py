@@ -153,7 +153,10 @@ def get_provider(settings: Settings | None = None, provider: str | None = None) 
 
     api_key = settings.api_key_for(name)
     model = settings.model_for(name)
-    if not api_key:
+    # A custom OpenAI-compatible endpoint may be a local server, which needs no
+    # key — so only insist on one when talking to the vendor's own API.
+    custom_endpoint = name == "openai" and bool(settings.openai_base_url)
+    if not api_key and not custom_endpoint:
         raise LLMError(
             f"No API key for provider '{name}'. Set the matching *_API_KEY in .env, "
             f"or use LLM_PROVIDER=stub for offline runs."
@@ -170,5 +173,7 @@ def get_provider(settings: Settings | None = None, provider: str | None = None) 
     if name == "openai":
         from honestapply.llm.openai_provider import OpenAIProvider
 
-        return OpenAIProvider(api_key=api_key, model=model)
+        return OpenAIProvider(
+            api_key=api_key, model=model, base_url=settings.openai_base_url
+        )
     raise LLMError(f"Unknown LLM provider: {name!r}")

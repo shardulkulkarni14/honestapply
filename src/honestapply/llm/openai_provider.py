@@ -1,6 +1,18 @@
-"""OpenAI provider for honestapply.
+"""OpenAI-compatible provider for honestapply.
 
-Uses the official `openai` Python SDK (>= 1.0).
+Uses the official `openai` Python SDK (>= 1.0), but is not limited to OpenAI.
+`POST /v1/chat/completions` is the de facto standard, so pointing `base_url`
+elsewhere reaches Ollama, LM Studio, llama.cpp's server, vLLM, OpenRouter, Groq,
+Together, DeepSeek, Fireworks and others through this one class — including fully
+local models, where no key is required and none is sent.
+
+    OPENAI_BASE_URL=http://localhost:11434/v1   OPENAI_MODEL=qwen3:14b   # Ollama
+    OPENAI_BASE_URL=https://openrouter.ai/api/v1                         # OpenRouter
+
+A caution worth repeating from SECURITY.md: the immutable-facts validator makes a
+weak model's fabrication *fail loudly* during tailoring, but cover letters have no
+equivalent hard check. Small local models over-claim more, and more quietly.
+
 API: client.chat.completions.create(model, messages, max_tokens, temperature)
 Response text: completion.choices[0].message.content
 """
@@ -18,8 +30,15 @@ DEFAULT_MODEL = "gpt-4o-mini"
 class OpenAIProvider(LLMProvider):
     name = "openai"
 
-    def __init__(self, *, api_key: str | None = None, model: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
         super().__init__(api_key=api_key, model=model or DEFAULT_MODEL)
+        self.base_url = base_url
 
     def complete(
         self,
@@ -34,7 +53,12 @@ class OpenAIProvider(LLMProvider):
         except ImportError as exc:
             raise LLMError("openai package not installed. Run: pip install openai") from exc
 
-        client = openai.OpenAI(api_key=self.api_key)
+        # Local servers (Ollama, LM Studio, llama.cpp) ignore the key but the SDK
+        # insists on a non-empty one, so send a placeholder rather than failing.
+        client = openai.OpenAI(
+            api_key=self.api_key or "not-needed",
+            base_url=self.base_url or None,
+        )
 
         messages: list[dict] = []
         if system:

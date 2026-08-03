@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     gemini_api_key: str | None = None
     openai_api_key: str | None = None
+    # Point at any OpenAI-compatible server to use it instead of OpenAI itself:
+    # Ollama (http://localhost:11434/v1), LM Studio, vLLM, llama.cpp, OpenRouter,
+    # Groq, Together, DeepSeek. Local servers need no key.
+    openai_base_url: str | None = None
 
     # Paths
     honestapply_db_path: str = "data/honestapply.db"
