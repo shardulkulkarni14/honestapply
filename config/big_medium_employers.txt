@@ -1,0 +1,211 @@
+# Big / medium employers to target in Germany.
+#
+# The job records carry no company-size field, so size is expressed as a curated
+# name list: DAX/MDAX industrials, large Mittelstand, established scale-ups
+# (roughly Series C and beyond, or 500+ staff), and multinationals with sizeable
+# German engineering sites. Matching is case-insensitive substring on the
+# company name, so "Bosch" also catches "Bosch Group" / "Robert Bosch GmbH".
+#
+# Used by: scripts/pick_candidates.py --companies-file config/big_medium_employers.txt
+# Deliberately excluded: early-stage startups, agencies, and staffing firms.
+# Per-user exclusions (e.g. employers that already sent a rejection) belong in
+# the gitignored config/employers.yaml, not here.
+
+# ── DAX / large industrials & automotive ──────────────────────────────────────
+Bosch
+Siemens
+Mercedes
+Daimler
+BMW
+Volkswagen
+Audi
+Porsche
+Continental
+ZF
+Schaeffler
+Knorr-Bremse
+MAN
+Traton
+Brose
+Webasto
+Mahle
+Hella
+Thyssenkrupp
+Heidelberg
+TRUMPF
+Festo
+KUKA
+Diehl
+Rohde
+HENSOLDT
+Rheinmetall
+Airbus
+MTU
+Liebherr
+Claas
+Wirtgen
+Dürr
+GEA
+Kärcher
+Miele
+Vorwerk
+Stihl
+Wacker
+Zeiss
+Sartorius
+Draeger
+Dräger
+Endress
+SICK
+Beckhoff
+Phoenix Contact
+Lenze
+SEW
+Bertrandt
+EDAG
+IAV
+Elektrobit
+
+# ── Software, telco, media, platforms ─────────────────────────────────────────
+SAP
+Software AG
+Celonis
+TeamViewer
+Nemetschek
+JetBrains
+Zalando
+Delivery Hero
+HelloFresh
+Scout24
+Check24
+CHECK24
+Otto
+Flix
+IONOS
+1&1
+United Internet
+Deutsche Telekom
+Telekom
+Vodafone
+Telefonica
+Axel Springer
+Bertelsmann
+ProSieben
+Springer Nature
+Trivago
+Idealo
+About You
+Zooplus
+Westwing
+Personio
+Staffbase
+Contentful
+Camunda
+DeepL
+Parloa
+Helsing
+Mistral
+NavVis
+KINEXON
+SumUp
+N26
+Trade Republic
+Solaris
+Raisin
+Scalable Capital
+Bitpanda
+wefox
+Wefox
+
+# ── Finance, insurance, consulting, pharma, chemicals, energy ─────────────────
+Allianz
+Munich Re
+Munich RE
+Hannover Re
+ERGO
+Talanx
+Deutsche Bank
+Commerzbank
+DZ Bank
+KfW
+Deutsche Börse
+Bayer
+BASF
+Merck
+Boehringer
+Fresenius
+Evonik
+Covestro
+Henkel
+Beiersdorf
+BioNTech
+Siemens Healthineers
+E.ON
+RWE
+EnBW
+Uniper
+Lufthansa
+DHL
+Deutsche Post
+Rewe
+REWE
+Schwarz
+Lidl
+Aldi
+Adidas
+Puma
+Accenture
+Capgemini
+Deloitte
+KPMG
+Ernst & Young
+PwC
+McKinsey
+Zuehlke
+Zühlke
+adesso
+msg systems
+DATEV
+Atruvia
+Materna
+Infineon
+Nokia
+Ericsson
+
+# ── Multinationals with significant German engineering presence ───────────────
+Amazon
+Amazon Web Services
+Google
+Microsoft
+Apple
+Meta
+IBM
+Oracle
+Salesforce
+ServiceNow
+Workday
+Snowflake
+Databricks
+Datadog
+MongoDB
+Elastic
+GitLab
+Atlassian
+Cisco
+Intel
+NVIDIA
+Qualcomm
+Bloomberg
+Stripe
+Adyen
+Klarna
+Zalando
+Uber
+Booking
+Expedia
+eBay
+PayPal
+Visa
+Mastercard
+OpenAI
+Anthropic

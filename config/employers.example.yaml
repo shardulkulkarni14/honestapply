@@ -1,0 +1,163 @@
+# honestapply employers configuration — copy this file to employers.yaml and edit.
+# Each entry tells honestapply how to fetch jobs directly from a company's ATS board.
+#
+# Fields:
+#   name  : human-readable company name
+#   ats   : greenhouse | lever | ashby
+#   token : the board slug / org slug used in the ATS API URL
+#           Leave blank and honestapply will guess `name.lower().replace(" ", "")`.
+#
+# How to find a company's board token:
+#   Greenhouse : visit job-boards.greenhouse.io/<token> or boards.greenhouse.io/<token>.
+#                The token is the path segment after the domain.
+#                API: GET https://boards-api.greenhouse.io/v1/boards/<token>/jobs
+#   Lever      : visit jobs.lever.co/<token> — the path segment is the token.
+#                API: GET https://api.lever.co/v0/postings/<token>?mode=json
+#   Ashby      : visit jobs.ashbyhq.com/<token> — the path segment is the token
+#                (case-insensitive; some companies use their domain, e.g. taxfix.com).
+#                API: GET https://api.ashbyhq.com/posting-api/job-board/<token>
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# US / GLOBAL employers (Greenhouse + Ashby) — verified May 2026
+# ─────────────────────────────────────────────────────────────────────────────
+employers:
+  # --- Greenhouse (US/Global) ---
+  - name: Anthropic
+    ats: greenhouse
+    token: anthropic   # verified: ~392 jobs
+
+  - name: Stripe
+    ats: greenhouse
+    token: stripe      # verified: ~496 jobs
+
+  - name: Figma
+    ats: greenhouse
+    token: figma       # verified: ~159 jobs
+
+  - name: Vercel
+    ats: greenhouse
+    token: vercel      # verified: ~79 jobs
+
+  # --- Ashby (US/Global) ---
+  - name: Notion
+    ats: ashby
+    token: notion      # verified: ~130 jobs
+
+  - name: Linear
+    ats: ashby
+    token: linear      # verified: ~23 jobs
+
+  - name: Cursor
+    ats: ashby
+    token: cursor      # verified: ~86 jobs (Cursor / Anysphere)
+
+  - name: Ramp
+    ats: ashby
+    token: ramp        # verified: ~121 jobs
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GERMAN / EU employers — verified May 2026
+# (all tokens confirmed >0 jobs via live API before inclusion)
+# ─────────────────────────────────────────────────────────────────────────────
+
+  # --- Greenhouse (German / EU) ---
+  - name: Celonis
+    ats: greenhouse
+    token: celonis           # verified: ~187 jobs; Munich HQ, offices in Berlin/US
+
+  - name: GetYourGuide
+    ats: greenhouse
+    token: getyourguide      # verified: ~62 jobs; Berlin HQ
+
+  - name: N26
+    ats: greenhouse
+    token: n26               # verified: ~51 jobs; Berlin HQ (digital bank)
+
+  - name: Contentful
+    ats: greenhouse
+    token: contentful        # verified: ~89 jobs; Berlin HQ
+
+  - name: Raisin
+    ats: greenhouse
+    token: raisin            # verified: ~42 jobs; Berlin HQ (WeltSparen/Raisin)
+
+  - name: SumUp
+    ats: greenhouse
+    token: sumup             # verified: ~455 jobs; Berlin HQ (payments)
+
+  - name: Helsing
+    ats: greenhouse
+    token: helsing           # verified: ~119 jobs; Munich/Berlin HQ (AI/defence)
+
+  - name: Trade Republic
+    ats: greenhouse
+    token: traderepublicbank # verified: ~58 jobs; Berlin HQ (neo-broker)
+
+  - name: commercetools
+    ats: greenhouse
+    token: commercetools     # verified: ~11 jobs; Munich HQ (e-commerce platform)
+
+  # --- Ashby (German / EU) ---
+  - name: DeepL
+    ats: ashby
+    token: deepl             # verified: ~20 jobs; Cologne HQ (AI translation)
+
+  - name: Taxfix
+    ats: ashby
+    token: taxfix.com        # verified: ~15 jobs; Berlin HQ (tax app)
+                             # Note: Ashby token is the company domain, not just the slug
+
+  - name: Pennylane
+    ats: ashby
+    token: pennylane         # verified: ~140 jobs; Paris HQ, strong Germany/EU hiring
+
+  - name: Back Market
+    ats: ashby
+    token: backmarket        # verified: ~35 jobs; Paris HQ, EU-wide (refurbished tech)
+
+  - name: Aleph Alpha
+    ats: ashby
+    token: AlephAlpha        # verified: ~9 jobs; Heidelberg HQ (German LLM / AI lab)
+
+  - name: Forto
+    ats: ashby
+    token: forto             # verified: ~16 jobs; Berlin HQ (digital freight)
+
+  # --- Lever (German / EU) ---
+  # No verified working public Lever board tokens found for German/EU companies as of
+  # May 2026; the companies above that use Lever (e.g. Sennder) appear to host via
+  # Greenhouse under a different token.  Uncomment if you find a valid token:
+  # - name: Sennder
+  #   ats: lever
+  #   token: sennder   # not verified — HTTP 404 on Lever API
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # SmartRecruiters — large traditional/industrial German employers live here
+  # (Bosch, Continental, …) rather than Greenhouse/Lever/Ashby.
+  #   token   = the SmartRecruiters company identifier
+  #             (from api.smartrecruiters.com/v1/companies/<token>/postings)
+  #   country = ISO code to bias the board (default "de"; set "" for all countries)
+  #   q       = optional keyword filter
+  # ───────────────────────────────────────────────────────────────────────────
+  - {name: Bosch, ats: smartrecruiters, token: BoschGroup, country: de}        # ~970 DE jobs
+  - {name: Continental, ats: smartrecruiters, token: Continental, country: de} # ~160 DE
+  - {name: CHECK24, ats: smartrecruiters, token: CHECK24, country: de}         # ~215 DE
+  - {name: Delivery Hero, ats: smartrecruiters, token: DeliveryHero, country: de}
+  - {name: Auto1 Group, ats: smartrecruiters, token: Auto1, country: de}       # ~162 DE (Berlin used-car platform)
+
+  # More German scaleups on Greenhouse (validated DE job volume):
+  - {name: Gympass/Wellhub, ats: greenhouse, token: gympass}                   # ~18 DE
+  - {name: Staffbase, ats: greenhouse, token: staffbase}                       # ~11 DE (Chemnitz/Berlin)
+  - {name: Grover, ats: greenhouse, token: grover}                             # ~10 DE (Berlin tech rental)
+  - {name: Moonfare, ats: greenhouse, token: moonfare}                         # ~9 DE (Berlin fintech)
+  - {name: emnify, ats: greenhouse, token: emnify}                             # ~7 DE (Berlin IoT)
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Workday — per-tenant public career sites (*.myworkdayjobs.com). Each needs:
+  #   host:   the Workday host  (e.g. acme.wd3.myworkdayjobs.com)
+  #   site:   the career-site path segment (e.g. External, AcmeCareers)
+  #   tenant: optional; defaults to the host's first sub-domain label
+  # Find host/site from the company's "Search Jobs" page URL. The fetcher is
+  # validated; uncomment + replace with a verified tenant (slugs vary per company):
+  # - {name: ExampleCo, ats: workday, token: exampleco,
+  #    host: exampleco.wd3.myworkdayjobs.com, site: External}

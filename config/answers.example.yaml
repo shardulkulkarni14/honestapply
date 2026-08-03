@@ -1,0 +1,113 @@
+# Pre-written answers for common application questions.
+# The apply orchestrator fuzzy-matches question text against these keys.
+#
+# THIS IS A TEMPLATE: replace every value with YOUR truthful details before
+# running the apply stage — these strings get typed into real forms.
+# (`honestapply init` copies this to config/answers.yaml, which is gitignored.)
+
+# ── Personal info ──────────────────────────────────────────────────────────────
+personal_info:
+  full_name: "Alex Example"
+  first_name: "Alex"
+  last_name: "Example"
+  email: "alex@example.com"
+  phone: "+49 100 0000000"
+  location: "Berlin, Germany"
+  city: "Berlin"
+  country: "Germany"
+  linkedin: "https://www.linkedin.com/in/alex-example"
+  github: "https://github.com/alex-example"
+  portfolio: ""
+  pronouns: ""
+
+# ── Self-identification / EEO ──────────────────────────────────────────────────
+self_identification:
+  gender: "Prefer not to say"
+  race_ethnicity: "Prefer not to say"
+  veteran_status: "I am not a protected veteran"
+  disability_status: "I don't wish to answer"
+  # If a form uses coded values you can override them here, e.g.:
+  # gender_code: "3"   # 3 = "Prefer not to answer" on OFCCP forms
+
+# ── Salary rules ───────────────────────────────────────────────────────────────
+# The orchestrator reads this block to decide what to type/select.
+salary_rules:
+  free_text: "Open to discussion based on total compensation and scope"
+  numeric_required_with_visible_range: "enter the high end of the visible range"
+  numeric_required_no_range: "use role-specific default from profile.salary_expectation"
+  range_selector: "profile.salary_expectation.min to profile.salary_expectation.max"
+  currency: "EUR"
+  note: >
+    Always use your home currency unless the role is explicitly priced in another.
+    For foreign-currency roles, convert using approximate market rate at time of application.
+
+# ── Work authorization ─────────────────────────────────────────────────────────
+# TODO_CONFIRM every line — wrong answers here can void an application.
+work_authorization:
+  authorized_to_work_in_germany: "TODO_CONFIRM"
+  authorized_to_work_in_eu: "TODO_CONFIRM"
+  authorized_to_work_in_us: "TODO_CONFIRM"
+  need_sponsorship_germany: "TODO_CONFIRM"
+  need_sponsorship_eu: "TODO_CONFIRM"
+  need_sponsorship_us: "TODO_CONFIRM"
+  visa_type: "TODO_CONFIRM (e.g. EU Blue Card, permanent residency, citizen)"
+  current_work_status: "TODO_CONFIRM"
+
+# ── General Q&A ───────────────────────────────────────────────────────────────
+# Rewrite these in your own voice with YOUR facts.
+general_qa:
+  notice_period: >
+    My contractual notice period is approximately 4 weeks. I am happy to discuss
+    start dates and can often arrange an earlier handover if needed.
+
+  earliest_start_date: >
+    Open to discussion; I can typically start within 4–6 weeks of accepting an offer,
+    depending on my current obligations.
+
+  willing_to_relocate: >
+    TODO — state your location and what arrangements (hybrid/remote/relocation)
+    you are open to.
+
+  willing_to_travel: >
+    TODO — e.g. "Happy to travel up to ~25% for customer visits or conferences."
+
+  why_do_you_want_to_work_here: >
+    I am excited about the opportunity to apply my expertise to help {company}
+    achieve its goals. I believe my background aligns well with this role and I
+    look forward to contributing to your team.
+
+  what_are_your_strengths: >
+    TODO — 2-3 sentences on your genuine strengths with concrete evidence.
+
+  what_are_your_weaknesses: >
+    TODO — one honest, low-stakes weakness plus what you do about it.
+
+  describe_yourself: >
+    TODO — 2-3 sentences: role, years of experience, what you enjoy building.
+
+  where_do_you_see_yourself_in_5_years: >
+    TODO — keep it honest and growth-oriented.
+
+  cover_letter_optional: >
+    Please see the attached cover letter for more detail on my background and
+    motivation for this role.
+
+  referral_source: "Direct / company website"
+
+  how_did_you_hear: "Online job board / company careers page"
+
+  preferred_work_style: "TODO (e.g. 'Hybrid — 2–3 days in office, remainder remote')"
+
+  languages_spoken: "TODO (e.g. 'English (fluent), German (B1)')"
+
+  open_source_contributions: >
+    TODO — link your GitHub if you want this answered "yes"; otherwise say no.
+
+# ── Role-specific answers ──────────────────────────────────────────────────────
+# Add one block per role family you target; keys are matched against question text.
+role_specific:
+  backend_engineer:
+    describe_backend_experience: >
+      TODO — your real experience: systems built, scale, technologies, outcomes.
+
+    years_of_python: "TODO"

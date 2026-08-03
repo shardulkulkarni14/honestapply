@@ -1,0 +1,217 @@
+<!doctype html>
+<!--
+  modern.html — ATS-friendly single-column resume template for honestapply
+  =======================================================================
+  Template context (injected by renderer.py :: build_context):
+    contact      dict  {name, title, location, email, phone, linkedin, github, website}
+    summary      str   chosen/tailored summary text
+    skills       dict  {category_name: "comma-separated items string"}
+    experience   list  [{company, title, dates, location, bullets: [str]}]
+    education    list  [{degree, institution, location, dates, details}]
+    projects     list  [{name, description, bullets: [str]}]
+    awards       list  [str]
+    languages    list  [str]
+    certifications list [str]
+    accent       str   hex color (e.g. "#1a3c5e")
+
+  ATS rules enforced in this template:
+    - Single column, no layout tables, no text boxes, no images/icons for content
+    - All content is real selectable text (no CSS-generated data)
+    - Section headings are plain uppercase text in <h2> tags
+    - Accent color only on heading text and horizontal rule — never as body background
+    - Standard section titles: Summary, Skills, Experience, Projects, Education,
+      Awards, Languages
+    - WeasyPrint compatible: no JS; CSS loaded via <link> (base_url = templates dir)
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>{{ contact.name }} — Resume</title>
+  <!-- modern.css is resolved by WeasyPrint using base_url=TEMPLATES_DIR -->
+  <link rel="stylesheet" href="modern.css">
+  <style>
+    /* Inject the accent color as a CSS custom property so modern.css can use it */
+    :root { --accent: {{ accent }}; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     HEADER — name, headline title, contact details
+     ATS note: all contact info is in plain selectable text, not in header/footer
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="resume-header">
+  <div class="resume-name">{{ contact.name }}</div>
+  {% if contact.title %}
+  <div class="resume-title">{{ contact.title }}</div>
+  {% endif %}
+  <div class="contact-line">
+    {#- Each item is a non-breaking span so long URLs never split across a line
+       (a split breaks the clickable href). URLs render as clickable links with
+       the scheme stripped for a clean, ATS-readable handle. -#}
+    {%- set items = [] -%}
+    {%- if contact.location %}{% set _ = items.append(('text', contact.location, '')) %}{% endif -%}
+    {%- if contact.email %}{% set _ = items.append(('link', contact.email, 'mailto:' + contact.email)) %}{% endif -%}
+    {%- if contact.phone %}{% set _ = items.append(('text', contact.phone, '')) %}{% endif -%}
+    {%- if contact.linkedin %}{% set _ = items.append(('link', contact.linkedin | replace('https://www.','') | replace('https://','') | replace('http://','') | replace('www.',''), contact.linkedin)) %}{% endif -%}
+    {%- if contact.github %}{% set _ = items.append(('link', contact.github | replace('https://www.','') | replace('https://','') | replace('http://','') | replace('www.',''), contact.github)) %}{% endif -%}
+    {%- if contact.website %}{% set _ = items.append(('link', contact.website | replace('https://www.','') | replace('https://','') | replace('http://','') | replace('www.',''), contact.website)) %}{% endif -%}
+    {%- for kind, text, href in items -%}
+      <span class="contact-item">{% if kind == 'link' %}<a href="{{ href }}">{{ text }}</a>{% else %}{{ text }}{% endif %}</span>
+      {%- if not loop.last %}<span class="sep">|</span>{% endif -%}
+    {%- endfor -%}
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SUMMARY
+     ═══════════════════════════════════════════════════════════════════════ -->
+{% if summary %}
+<div class="section">
+  <h2 class="section-heading">Summary</h2>
+  <p class="summary-text">{{ summary | mdbold }}</p>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SKILLS
+     ATS note: plain text rows — category bold, items as comma-separated text.
+     No tables (cell boundaries confuse many parsers).
+     ═══════════════════════════════════════════════════════════════════════ -->
+{% if skills %}
+<div class="section">
+  <h2 class="section-heading">Skills</h2>
+  <div class="skills-table">
+    {% for category, items in skills.items() %}
+    <div class="skill-row">
+      <span class="skill-category">{{ category }}:</span>
+      <span class="skill-items"> {{ items }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     EXPERIENCE
+     ATS note: company + location on line 1; title + dates on line 2 (dates
+     floated right); bullets as real <ul><li>.
+     ═══════════════════════════════════════════════════════════════════════ -->
+{% if experience %}
+<div class="section">
+  <h2 class="section-heading">Experience</h2>
+  {# Group consecutive roles at the same company under ONE header (shows internal
+     promotions as one tenure, not separate jobs — and stays consistent with LinkedIn). #}
+  {% set ns = namespace(prev='') %}
+  {% for job in experience %}
+  {% set same_company = (job.company == ns.prev) %}
+  <div class="experience-entry{% if same_company %} same-company{% endif %}">
+    <!-- Line 1: Company · Location (omitted when same as previous entry) -->
+    {% if not same_company %}
+    <div class="exp-company-line clearfix">
+      {{ job.company }}{% if job.location %}<span class="exp-location">, {{ job.location }}</span>{% endif %}
+    </div>
+    {% endif %}
+    {% set ns.prev = job.company %}
+    <!-- Line 2: Title (italic) · Dates — inline, in reading order so ATS keeps
+         the date attached to the role (no float, which scrambles PDF text order). -->
+    <div class="exp-title-line">
+      <span class="exp-title">{{ job.title }}</span>{% if job.dates %}<span class="exp-dates"> · {{ job.dates }}</span>{% endif %}
+    </div>
+    <!-- Bullets -->
+    {% if job.bullets %}
+    <ul class="exp-bullets">
+      {% for bullet in job.bullets %}
+      <li>{{ bullet | mdbold }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     PROJECTS
+     ═══════════════════════════════════════════════════════════════════════ -->
+{% if projects %}
+<div class="section">
+  <h2 class="section-heading">Projects</h2>
+  {% for project in projects %}
+  <div class="project-entry">
+    <div class="project-name-line">
+      {{ project.name }}{% if project.description %}<span class="project-description"> · {{ project.description }}</span>{% endif %}
+    </div>
+    {% if project.bullets %}
+    <ul class="project-bullets">
+      {% for bullet in project.bullets %}
+      <li>{{ bullet | mdbold }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     EDUCATION
+     ═══════════════════════════════════════════════════════════════════════ -->
+{% if education %}
+<div class="section">
+  <h2 class="section-heading">Education</h2>
+  {% for edu in education %}
+  <div class="education-entry">
+    <div class="edu-degree-line">
+      {{ edu.degree }}{% if edu.dates %}<span class="edu-dates"> · {{ edu.dates }}</span>{% endif %}
+    </div>
+    <div class="edu-institution-line">
+      {{ edu.institution }}{% if edu.location %}, {{ edu.location }}{% endif %}
+      {% if edu.details %}<span class="edu-details"> · {{ edu.details }}</span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     AWARDS / RECOGNITION
+     ═══════════════════════════════════════════════════════════════════════ -->
+{% if awards %}
+<div class="section">
+  <h2 class="section-heading">Awards</h2>
+  <ul class="simple-list">
+    {% for award in awards %}
+    <li>{{ award }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     LANGUAGES
+     ═══════════════════════════════════════════════════════════════════════ -->
+{% if languages %}
+<div class="section">
+  <h2 class="section-heading">Languages</h2>
+  <p class="inline-list">{{ languages | join(" · ") }}</p>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     CERTIFICATIONS  (rendered only when non-empty)
+     ═══════════════════════════════════════════════════════════════════════ -->
+{% if certifications %}
+<div class="section">
+  <h2 class="section-heading">Certifications</h2>
+  <ul class="simple-list">
+    {% for cert in certifications %}
+    <li>{{ cert }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+</body>
+</html>

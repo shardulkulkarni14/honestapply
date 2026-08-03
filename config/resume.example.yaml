@@ -1,0 +1,94 @@
+# ---------------------------------------------------------------------------
+# EXAMPLE resume — copy to `data/resumes/default.yaml` and replace every value
+# with YOUR real facts. (It lives in config/ as a reference so the pipeline
+# never mistakes it for a real resume; data/resumes/ is gitignored.)
+#
+# How honestapply uses this file:
+#   * `name` + `target_keywords` -> pick the best base resume per job
+#     (keyword match against the job description; add one YAML per role family).
+#   * `summary_variants` -> the tailor stage picks/adapts ONE; write 2-3
+#     versions emphasising different strengths.
+#   * `resume_facts` -> IMMUTABLE. Every string here must survive tailoring
+#     verbatim (substring-checked). Never put anything here that isn't true —
+#     the no-fabrication guard exists to protect you in interviews.
+# ---------------------------------------------------------------------------
+
+name: "Example — Backend Engineer"
+
+target_keywords:
+  - python
+  - fastapi
+  - postgresql
+  - docker
+  - aws
+  - microservices
+  - rest api
+  - backend
+
+summary_variants:
+  - >
+    Backend engineer with 4+ years building Python services at scale.
+    Led the migration of a monolith to event-driven microservices serving
+    2M requests/day. Strong on API design, observability, and pragmatic testing.
+
+  - >
+    Product-minded backend engineer (Python/FastAPI/PostgreSQL) who owns
+    features end-to-end: design docs, implementation, deployment, and on-call.
+
+resume_facts:
+  contact:
+    name: "Alex Example"
+    title: "Backend Engineer | Python & Cloud"
+    location: "Berlin, Germany"
+    email: "alex@example.com"
+    phone: "(+49) 100 0000000"
+    linkedin: "https://www.linkedin.com/in/alex-example/"
+    github: "https://github.com/alex-example"
+    website: "https://alex-example.dev"
+
+  education:
+    - degree: "M.Sc. Computer Science"
+      institution: "Example University"
+      location: "Berlin, Germany"
+      dates: "2018 - 2020"
+      details: "GPA: 1.8"
+
+  experience:
+    - company: "Acme Logistics GmbH"
+      title: "Senior Backend Engineer"
+      dates: "March 2022 - Present"
+      location: "Berlin, Germany"
+      bullets:
+        - "Led migration from a Django monolith to event-driven FastAPI microservices handling 2M requests/day."
+        - "Cut p95 API latency from 800ms to 120ms by introducing read replicas and Redis caching."
+        - "Mentored 3 junior engineers; introduced ADRs and a lightweight RFC process."
+
+    - company: "Startup Labs UG"
+      title: "Backend Engineer"
+      dates: "August 2020 - February 2022"
+      location: "Remote"
+      bullets:
+        - "Built the payments integration (Stripe) and reconciliation pipeline processing €1.2M/month."
+        - "Set up CI/CD on GitHub Actions with automated canary deploys to AWS ECS."
+
+  skills:
+    "Languages": "Python (6 yrs), TypeScript, SQL, Bash"
+    "Backend": "FastAPI, Django, PostgreSQL, Redis, RabbitMQ, REST, gRPC"
+    "Cloud / DevOps": "AWS (ECS, RDS, S3, Lambda), Docker, Terraform, GitHub Actions"
+    "Practices": "TDD, observability (Grafana, Sentry), on-call, code review"
+
+  projects:
+    - name: "opentrack"
+      description: "Open-source request-tracing middleware for FastAPI (800+ GitHub stars)"
+      bullets:
+        - "Zero-config OpenTelemetry integration; adopted by 3 companies in production."
+
+  awards:
+    - "Winner, Berlin Climate Hackathon 2021"
+
+  languages:
+    - "English (C1)"
+    - "German (B1)"
+
+  certifications:
+    - "AWS Certified Solutions Architect – Associate (2023)"

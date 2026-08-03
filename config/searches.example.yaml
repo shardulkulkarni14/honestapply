@@ -1,0 +1,136 @@
+# honestapply searches configuration — copy this file to searches.yaml and edit to your needs.
+# Each entry maps to one python-jobspy scrape call.
+#
+# Fields:
+#   query       : search keywords (required)
+#   location    : city / region string passed to the board
+#   board       : indeed | linkedin | glassdoor | zip_recruiter
+#                 (avoid `google` — jobspy's Google Jobs scraper returns empty
+#                  without an API key; use `indeed` for keyword/company sweeps)
+#   max_results : cap on results per search (default 25)
+#   country     : country hint for Indeed (default "Germany")
+#   hours_old   : only jobs posted within this many hours (leave blank for no filter)
+#   is_remote   : filter for remote-only listings (default false)
+#
+# Note: python-jobspy scrapes live job boards; some boards (LinkedIn, Glassdoor)
+# may rate-limit or CAPTCHA-block requests from certain networks or VPNs.
+# If a board fails, honestapply logs a warning and continues with remaining sources.
+# Indeed (country: Germany) is typically the most reliable for German job searches.
+
+searches:
+  # ── Munich / Bavaria ───────────────────────────────────────────────────────
+  - query: "AI Engineer"
+    location: "Munich, Germany"
+    board: indeed
+    max_results: 30
+    country: Germany
+    hours_old: 168   # 1 week
+    is_remote: false
+
+  - query: "Machine Learning Engineer"
+    location: "Munich, Germany"
+    board: indeed
+    max_results: 25
+    country: Germany
+    hours_old: 168
+
+  - query: "LLM Engineer"
+    location: "Munich, Germany"
+    board: indeed
+    max_results: 20
+    country: Germany
+    hours_old: 336   # 2 weeks
+
+  # ── Berlin ─────────────────────────────────────────────────────────────────
+  - query: "Generative AI Engineer"
+    location: "Berlin, Germany"
+    board: indeed
+    max_results: 25
+    country: Germany
+    hours_old: 168
+
+  - query: "AI Engineer"
+    location: "Berlin, Germany"
+    board: indeed
+    max_results: 25
+    country: Germany
+    hours_old: 168
+
+  - query: "Machine Learning Engineer"
+    location: "Berlin, Germany"
+    board: indeed
+    max_results: 25
+    country: Germany
+    hours_old: 336
+
+  # ── Germany-wide (remote / hybrid) ─────────────────────────────────────────
+  - query: "LLM Engineer"
+    location: "Germany"
+    board: indeed
+    max_results: 25
+    country: Germany
+    hours_old: 336   # 2 weeks
+
+  - query: "Generative AI Engineer"
+    location: "Germany"
+    board: indeed
+    max_results: 25
+    country: Germany
+    is_remote: true
+
+  - query: "AI Solutions Engineer"
+    location: "Germany"
+    board: indeed
+    max_results: 20
+    country: Germany
+    hours_old: 336
+
+  - query: "Forward Deployed Engineer"
+    location: "Germany"
+    board: linkedin
+    max_results: 20
+    country: Germany
+    is_remote: false
+
+  - query: "Forward Deployed Engineer AI"
+    location: "Germany"
+    board: indeed
+    max_results: 20
+    country: Germany
+    hours_old: 336
+
+  # ── LinkedIn Germany-wide (broader reach) ──────────────────────────────────
+  - query: "Machine Learning Engineer"
+    location: "Germany"
+    board: linkedin
+    max_results: 25
+    country: Germany
+    is_remote: false
+
+  - query: "Generative AI"
+    location: "Germany"
+    board: linkedin
+    max_results: 25
+    country: Germany
+
+  - query: "LLM Engineer"
+    location: "Germany"
+    board: linkedin
+    max_results: 20
+    country: Germany
+
+  # ── Remote (EU / worldwide) ─────────────────────────────────────────────────
+  - query: "AI Engineer"
+    location: "Remote"
+    board: indeed
+    max_results: 25
+    country: Germany
+    is_remote: true
+    hours_old: 168
+
+  - query: "Generative AI Engineer"
+    location: "Remote"
+    board: linkedin
+    max_results: 25
+    country: Germany
+    is_remote: true

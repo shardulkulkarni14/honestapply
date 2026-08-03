@@ -1,0 +1,125 @@
+{
+  "_TODO_confirm": [
+    "legal_name / email / phone / linkedin_url / github_url: fill in YOUR details",
+    "visa_type: confirm your visa / work-permit type (EU Blue Card, permanent residency, citizen, etc.)",
+    "sponsorship_needed: set to true/false per region",
+    "address: fill in your city, postal code, and street address",
+    "salary_expectation.min/max: set your acceptable gross annual salary range",
+    "notice_period_weeks: set your current notice period in weeks",
+    "willing_to_relocate: set true/false based on your preference",
+    "professional_summary / skills / education: replace with YOUR background",
+    "screening_question_defaults: replace every value with YOUR truthful answers",
+    "available_start_date: fill in once you know (ISO date, e.g. '2026-09-01')"
+  ],
+
+  "legal_name": {
+    "first": "Alex",
+    "middle": "",
+    "last": "Example",
+    "preferred": "Alex"
+  },
+
+  "email": "alex@example.com",
+  "phone": "+49 100 0000000",
+
+  "address": {
+    "country": "Germany",
+    "state": "Berlin",
+    "city": "Berlin",
+    "postal_code": "TODO_FILL_IN",
+    "line1": "TODO_FILL_IN"
+  },
+
+  "linkedin_url": "https://www.linkedin.com/in/alex-example",
+  "github_url": "https://github.com/alex-example",
+  "portfolio_url": "",
+
+  "work_authorization": {
+    "status": "TODO_CONFIRM (e.g. 'Authorized to work in Germany/EU')",
+    "visa_type": "TODO_CONFIRM (e.g. EU Blue Card, Niederlassungserlaubnis, citizen, etc.)",
+    "sponsorship_needed": false,
+    "_note_non_eu_roles": "TODO_CONFIRM sponsorship_needed=true for US/UK/other non-EU roles if applicable",
+    "us_work_authorization": false,
+    "us_authorized_statuses": [],
+    "eu_authorized": true,
+    "right_to_work_uk": false
+  },
+
+  "demographics": {
+    "_note": "All EEO/demographic fields default to prefer_not_to_say. Update only if you choose to self-identify.",
+    "gender": "prefer_not_to_say",
+    "race_ethnicity": "prefer_not_to_say",
+    "veteran_status": "prefer_not_to_say",
+    "disability_status": "prefer_not_to_say",
+    "pronouns": ""
+  },
+
+  "salary_expectation": {
+    "min": 70000,
+    "max": 90000,
+    "currency": "EUR",
+    "notes": "Open to discussion based on total compensation and scope",
+    "_note": "TODO_CONFIRM: adjust min/max to reflect your market rate (gross annual)"
+  },
+
+  "notice_period_weeks": 4,
+  "_note_notice_period": "TODO_CONFIRM: set to your actual contractual notice period in weeks",
+
+  "available_start_date": "",
+
+  "preferred_locations": [
+    "Berlin",
+    "Remote (Germany)",
+    "Remote (EU)"
+  ],
+
+  "willing_to_relocate": false,
+  "_note_relocate": "TODO_CONFIRM: set to true if open to relocation",
+
+  "references": [],
+  "_note_references": "TODO_CONFIRM: add professional references here if required by applications",
+
+  "_note_supporting_documents": "Optional. Paths (absolute or repo-relative, gitignored e.g. under data/documents/) to transcripts, reference letters, and work references. `honestapply docs-bundle` merges them into one PDF for forms that require a single 'Transcripts & Reference Letters' upload.",
+  "supporting_documents": [],
+
+  "_note_language_levels": "Canonical CEFR levels — the source of truth for the no-over-claim guard. Cover letters/résumés may never assert higher than these (e.g. with german=A2, a draft claiming 'fluent/native German' is rejected). Use A1–C2 or 'native'.",
+  "language_levels": { "english": "C2", "german": "A2" },
+
+  "professional_summary": "TODO_FILL_IN — 2-3 sentences: role, years of experience, headline skills, location, work authorization. Used to answer 'tell us about yourself' style fields.",
+
+  "skills": {
+    "_note": "Group YOUR skills however fits your field; keys are free-form.",
+    "languages": ["Python", "TypeScript", "SQL"],
+    "backend": ["FastAPI", "PostgreSQL", "Redis", "REST APIs"],
+    "cloud_devops": ["AWS", "Docker", "CI/CD", "Linux"]
+  },
+
+  "education": [
+    {
+      "institution": "Example University",
+      "degree": "M.Sc. Computer Science",
+      "field_of_study": "Computer Science",
+      "graduation_year": "2020",
+      "gpa": "1.8"
+    }
+  ],
+
+  "screening_question_defaults": {
+    "_note": "Every value here must be TRUE for you — these get typed into real forms.",
+    "years_experience": {
+      "python": "TODO",
+      "machine_learning": "TODO"
+    },
+    "willing_to_work_onsite": "yes (hybrid preferred)",
+    "willing_to_work_remote": "yes",
+    "requires_visa_sponsorship": "TODO_CONFIRM",
+    "authorized_to_work": "TODO_CONFIRM (e.g. 'Yes — authorized to work in Germany/EU')",
+    "authorized_to_work_us": "TODO_CONFIRM",
+    "earliest_start_date": "open to discussion; typically 4 weeks notice",
+    "salary_expectation_text": "Open to discussion based on total compensation and scope",
+    "why_this_company_template": "I am excited about {company}'s work and believe my background aligns well with this role. I look forward to contributing to your team.",
+    "highest_education": "TODO (e.g. \"Master's degree\")",
+    "willing_to_travel": "TODO (e.g. 'Up to 25%')",
+    "cover_letter_optional": "Attached"
+  }
+}

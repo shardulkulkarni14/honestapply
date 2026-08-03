@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "honestapply"
+version = "0.1.0"
+description = "Autonomous, CLI-driven job-application pipeline: discover -> enrich -> score -> tailor -> cover-letter -> apply."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Shardul Kulkarni" }]
+
+# Core deps: everything needed for CLI, config, and DB to work.
+# Heavier / stage-specific deps live in optional-dependencies so each build
+# phase can install only what it needs. `pip install -e ".[all]"` gets it all.
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "SQLAlchemy>=2.0.25",
+    "PyYAML>=6.0",
+    "python-dotenv>=1.0",
+    "structlog>=24.1",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+# Stage 2 — resume rendering
+resume = [
+    "Jinja2>=3.1",
+    "weasyprint>=61.0",
+]
+# Stages 1 & 2 (discover/enrich) — job boards + HTML parsing
+discover = [
+    "python-jobspy>=1.1.70",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.1",
+]
+# Stages 3-5 — LLM providers
+llm = [
+    "anthropic>=0.40",
+    "google-genai>=0.3",
+    "openai>=1.40",
+]
+# Stage 7 — dashboard
+dashboard = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+    "ruff>=0.4",
+]
+all = [
+    "honestapply[resume,discover,llm,dashboard,dev]",
+]
+
+[project.scripts]
+honestapply = "honestapply.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/honestapply"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

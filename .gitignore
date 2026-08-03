@@ -1,0 +1,77 @@
+# --- Personal data: DENY BY DEFAULT -----------------------------------------
+# Everything under data/ and config/ is ignored unless explicitly re-included.
+# This is deliberate: an enumerative ignore list leaks the first time someone
+# saves a file whose name nobody thought to list (a resume PDF, an export, a
+# screenshot). Add new shareable files here by exception, never by omission.
+
+data/*
+!data/*/
+data/*/*
+!data/.gitkeep
+!data/**/.gitkeep
+
+config/*
+!config/*.example.*
+!config/ats_selectors.yaml
+!config/big_medium_employers.txt
+
+# Secrets
+.env*
+!.env.example
+
+# Personal documents and artifacts, anywhere in the tree
+*.pdf
+*.docx
+*.xlsx
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.db
+*.sqlite
+*.sqlite3
+
+# Playwright accessibility snapshots: these capture filled-in form state,
+# i.e. a real name, email, phone and address.
+*.yml
+!.github/**/*.yml
+!config/*.example.yml
+
+# launchd/systemd units carry absolute $HOME paths
+*.plist
+
+# Persistent browser profile (lives in ~/.honestapply, ignore if symlinked in)
+browser-profile/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.Python
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- OS / editor ---
+**/.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- Tooling ---
+.claude/settings.local.json
+.playwright-mcp/
+
+# --- dashboard frontend (Next.js) build artifacts ---
+dashboard/web/node_modules/
+dashboard/web/.next/
+dashboard/web/out/

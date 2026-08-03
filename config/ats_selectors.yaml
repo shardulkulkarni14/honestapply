@@ -1,0 +1,122 @@
+# ATS field selector hints for Claude+Playwright to use when filling forms.
+# These are best-effort CSS/attribute selectors; Claude should fall back to
+# text-matching ("Apply", "Submit") when a selector doesn't match.
+
+greenhouse:
+  first_name: 'input[name="job_application[first_name]"]'
+  last_name: 'input[name="job_application[last_name]"]'
+  email: 'input[name="job_application[email]"]'
+  phone: 'input[name="job_application[phone]"]'
+  resume_upload: 'input[type="file"][name*="resume"], input[type="file"][id*="resume"]'
+  cover_letter_upload: 'input[type="file"][name*="cover"], input[type="file"][id*="cover"]'
+  linkedin_url: 'input[name*="linkedin"], input[id*="linkedin"]'
+  website_url: 'input[name*="website"], input[id*="website"], input[name*="github"]'
+  location: 'input[name*="location"], input[id*="location"]'
+  submit: 'input[type="submit"]#submit_app, button[type="submit"]'
+  notes: |
+    Greenhouse boards embed the form at the same page. Look for a <form id="application_form">
+    or <form class="js--can-submit">. Custom questions appear after the standard fields.
+    EEO section is often at the bottom under "Voluntary Self-Identification".
+  _notes:
+    react_select: |
+      Greenhouse custom questions (dropdowns rendered after the standard fields) use
+      react-select widgets, NOT native <select> elements. Do NOT use browser_select_option
+      or browser_fill_form(type="combobox") on these fields — they will throw
+      "Element is not a <select> element". Instead follow the react-select procedure
+      in apply_browser.md §7b: fresh snapshot → click combobox → fresh snapshot of
+      listbox → click exact option ref → read back and verify the displayed value.
+
+lever:
+  first_name: 'input[name="name"]'
+  last_name: ''  # Lever uses a single "name" field
+  full_name: 'input[name="name"], input[id="name"]'
+  email: 'input[name="email"], input[type="email"]'
+  phone: 'input[name="phone"], input[type="tel"]'
+  org: 'input[name="org"], input[id="org"]'
+  resume_upload: 'input[type="file"][name="resume"], input[type="file"][id="resume-upload"]'
+  cover_letter_text: 'textarea[name="comments"], textarea[id="additional-information"]'
+  linkedin_url: 'input[name*="linkedin"]'
+  website_url: 'input[name*="urls[GitHub]"], input[name*="urls[Portfolio]"]'
+  submit: 'button[type="submit"].postings-btn-submit, input[type="submit"]'
+  notes: |
+    Lever uses a single-page form at https://jobs.lever.co/{company}/{job-id}/apply.
+    The name field is a single input; split "first last" from profile.legal_name.
+    Custom questions are rendered as additional inputs below the standard block.
+
+ashby:
+  first_name: 'input[data-testid="firstName"], input[id*="firstName"], input[name*="firstName"]'
+  last_name: 'input[data-testid="lastName"], input[id*="lastName"], input[name*="lastName"]'
+  email: 'input[data-testid="email"], input[type="email"]'
+  phone: 'input[data-testid="phone"], input[type="tel"]'
+  resume_upload: 'input[type="file"][data-testid*="resume"], input[type="file"][accept*="pdf"]'
+  linkedin_url: 'input[data-testid*="linkedin"], input[placeholder*="linkedin"]'
+  github_url: 'input[data-testid*="github"], input[placeholder*="github"]'
+  portfolio_url: 'input[data-testid*="portfolio"], input[placeholder*="portfolio"]'
+  submit: 'button[data-testid="submit-application"], button[type="submit"]'
+  notes: |
+    Ashby is React-heavy; wait for network idle after page load before filling.
+    EEO questions appear on a separate page/step in the multi-step wizard.
+    File uploads may use a drag-and-drop zone — trigger the hidden file input directly.
+
+workday:
+  first_name: 'input[data-automation-id="legalNameSection_firstName"]'
+  last_name: 'input[data-automation-id="legalNameSection_lastName"]'
+  email: 'input[data-automation-id="email"]'
+  phone: 'input[data-automation-id="phone-number"]'
+  address_line1: 'input[data-automation-id="addressSection_addressLine1"]'
+  city: 'input[data-automation-id="addressSection_city"]'
+  state: 'input[data-automation-id="addressSection_countryRegion"]'
+  postal_code: 'input[data-automation-id="addressSection_postalCode"]'
+  country: 'select[data-automation-id="addressSection_country"]'
+  resume_upload: 'input[type="file"][data-automation-id*="Resume"]'
+  cover_letter_upload: 'input[type="file"][data-automation-id*="Cover"]'
+  how_did_you_hear: 'select[data-automation-id*="referral"], select[data-automation-id*="source"]'
+  submit: 'button[data-automation-id="bottom-navigation-next-button"], button[data-automation-id="click_done"]'
+  notes: |
+    Workday uses a multi-step wizard at myworkdayjobs.com. Each step has a "Next" button.
+    The form uses data-automation-id attributes extensively — prefer those over CSS classes.
+    Login is typically required; check for a persisted session in the browser profile.
+    EEO / voluntary self-ID is usually the last step before submission.
+    File upload: click the "Upload" or "Add" button first, then interact with file input.
+
+smartrecruiters:
+  first_name: 'input[name="firstName"], input[id="firstName"]'
+  last_name: 'input[name="lastName"], input[id="lastName"]'
+  email: 'input[name="email"], input[type="email"]'
+  phone: 'input[name="phoneNumber"], input[id="phone"]'
+  location: 'input[name="location.city"], input[id*="location"]'
+  resume_upload: 'input[type="file"][accept*="pdf"], input[type="file"][name*="resume"]'
+  cover_letter_upload: 'input[type="file"][name*="cover"]'
+  linkedin_url: 'input[name*="linkedin"], input[placeholder*="linkedin"]'
+  website_url: 'input[name*="website"], input[placeholder*="website"]'
+  submit: 'button[data-hook="continue"], button.wds-btn--primary[type="submit"]'
+  notes: |
+    SmartRecruiters embeds the form on careers.smartrecruiters.com/{company}/job/{id}/apply.
+    Multi-step: Profile -> Questions -> Review.
+    File upload uses a custom drag-and-drop widget; trigger the underlying file input.
+    Screening questions appear on step 2 as radio buttons, checkboxes, or text fields.
+
+linkedin:
+  apply_button: 'button.jobs-apply-button, button[data-control-name="jobdetails_topcard_inapply"]'
+  easy_apply_button: 'button[aria-label*="Easy Apply"]'
+  next_button: 'button[aria-label="Continue to next step"]'
+  submit: 'button[aria-label="Submit application"]'
+  resume_upload: 'input[type="file"][name="file"]'
+  phone: 'input[id*="phoneNumber"]'
+  notes: |
+    WARNING: LinkedIn Easy Apply automation carries a high ban risk.
+    Only use if enable_linkedin_easy_apply=True AND HONESTAPPLY_LINKEDIN_CONFIRM is set.
+    Easy Apply is a multi-step modal dialog; navigate via "Next" and "Review" buttons.
+
+generic:
+  first_name: 'input[name*="first"], input[id*="first_name"], input[placeholder*="First name" i]'
+  last_name: 'input[name*="last"], input[id*="last_name"], input[placeholder*="Last name" i]'
+  email: 'input[type="email"], input[name*="email"], input[id*="email"]'
+  phone: 'input[type="tel"], input[name*="phone"], input[id*="phone"]'
+  resume_upload: 'input[type="file"][accept*="pdf"], input[type="file"][name*="resume"], input[type="file"][id*="resume"]'
+  cover_letter_upload: 'input[type="file"][name*="cover"], input[type="file"][id*="cover"]'
+  submit: 'button[type="submit"], input[type="submit"], button:has-text("Submit"), button:has-text("Apply")'
+  notes: |
+    For unknown ATS types, rely heavily on text matching and visible labels.
+    Use Playwright's getByLabel() and getByRole() for robust field matching.
+    Take a screenshot before any action if the form structure is unclear.

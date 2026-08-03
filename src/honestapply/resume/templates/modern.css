@@ -1,0 +1,283 @@
+/*
+ * modern.css — ATS-friendly single-column resume stylesheet
+ *
+ * Design rules enforced here:
+ *   - Single column, no layout tables, no floats for structure
+ *   - Standard sans-serif fonts only
+ *   - Accent color (#1a3c5e or injected via inline style on :root) used ONLY
+ *     for section heading text and the thin horizontal rule below each heading
+ *   - White background, near-black body text
+ *   - Tight A4 margins (~1.6cm) to fit 1-2 pages
+ *   - Body 10.5pt, section headings 11pt uppercase, name 18pt
+ *   - Real <ul><li> bullets — never CSS-generated content for actual data
+ *   - WeasyPrint compatible: no JS, minimal flexbox (block/inline used instead)
+ */
+
+/* ── Page setup ──────────────────────────────────────────────────────────── */
+@page {
+  size: A4;
+  margin: 1.6cm 1.7cm;
+}
+
+/* ── Reset & base ────────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.42;
+  color: #1a1a1a;
+  background: #ffffff;
+}
+
+/* ── Header / Contact block ──────────────────────────────────────────────── */
+.resume-header {
+  margin-bottom: 6pt;
+  padding-bottom: 5pt;
+  border-bottom: 1.5pt solid var(--accent);
+}
+
+.resume-name {
+  font-size: 18pt;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.resume-title {
+  font-size: 9.5pt;
+  color: #444444;
+  margin-top: 2pt;
+  margin-bottom: 5pt;
+}
+
+/* Contact details — inline, pipe-separated via CSS for clean ATS parsing     */
+/* Each item is a plain <span> so text is fully selectable                    */
+.contact-line {
+  font-size: 9pt;
+  color: #333333;
+  line-height: 1.6;
+}
+
+.contact-line .sep {
+  margin: 0 4pt;
+  color: #999999;
+}
+
+/* Keep each contact item (esp. URLs) whole — never break mid-URL, which would
+   split the clickable link across lines and truncate the destination. */
+.contact-line .contact-item {
+  white-space: nowrap;
+}
+.contact-line a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── Section headings ────────────────────────────────────────────────────── */
+/*
+ * ATS requirement: section titles must be plain text, standard words.
+ * We use color: var(--accent) and a bottom border rule — no background fill.
+ */
+.section {
+  margin-top: 8pt;
+  margin-bottom: 0;
+}
+
+.section-heading {
+  font-size: 10.5pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  border-bottom: 0.75pt solid var(--accent);
+  padding-bottom: 1.5pt;
+  margin-bottom: 4pt;
+}
+
+/* ── Summary ─────────────────────────────────────────────────────────────── */
+.summary-text {
+  font-size: 10.5pt;
+  line-height: 1.45;
+  color: #1a1a1a;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* ── Skills ──────────────────────────────────────────────────────────────── */
+/*
+ * Plain block rows: Category label (bold) + colon + item list on the same line.
+ * No tables — ATS parsers often mangle table cell boundaries.
+ */
+.skills-table {
+  width: 100%;
+}
+
+.skill-row {
+  margin-bottom: 2.5pt;
+  font-size: 9.5pt;
+  line-height: 1.4;
+  text-align: justify;
+  hyphens: auto;
+}
+
+.skill-category {
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.skill-items {
+  color: #2a2a2a;
+}
+
+/* ── Experience ──────────────────────────────────────────────────────────── */
+.experience-entry {
+  margin-bottom: 6pt;
+  /* Keep a role's header + bullets together — never split across a page break. */
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* A role under the same company header as the entry above it — sits tighter so
+   stacked promotions read as one tenure. */
+.experience-entry.same-company {
+  margin-top: 3pt;
+}
+
+/* Company + location on one line */
+.exp-company-line {
+  font-weight: 700;
+  font-size: 10.5pt;
+  color: #1a1a1a;
+}
+
+.exp-location {
+  font-weight: 400;
+  color: #444444;
+}
+
+/* Title + dates on the next line, dates right-aligned using inline-block */
+.exp-title-line {
+  font-size: 10pt;
+  color: #222222;
+  margin-top: 0.5pt;
+}
+
+.exp-title {
+  font-style: italic;
+}
+
+.exp-dates {
+  font-style: normal;
+  color: #555555;        /* inline + in reading order: ATS keeps date with role */
+}
+
+/* Bullet list */
+.exp-bullets {
+  margin-top: 2pt;
+  margin-left: 14pt;
+  padding-left: 0;
+  list-style-type: disc;
+}
+
+.exp-bullets li {
+  margin-bottom: 1.5pt;
+  font-size: 10pt;
+  line-height: 1.4;
+  color: #1a1a1a;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* Clearfix for floated dates */
+.clearfix::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+
+/* ── Projects ────────────────────────────────────────────────────────────── */
+.project-entry {
+  margin-bottom: 5pt;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.project-name-line {
+  font-weight: 700;
+  font-size: 10.5pt;
+  color: #1a1a1a;
+}
+
+.project-description {
+  font-style: italic;
+  font-weight: 400;
+  color: #444444;
+}
+
+.project-bullets {
+  margin-top: 2pt;
+  margin-left: 14pt;
+  padding-left: 0;
+  list-style-type: disc;
+}
+
+.project-bullets li {
+  margin-bottom: 1.5pt;
+  font-size: 10pt;
+  line-height: 1.4;
+  color: #1a1a1a;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* ── Education ───────────────────────────────────────────────────────────── */
+.education-entry {
+  margin-bottom: 4pt;
+}
+
+.edu-degree-line {
+  font-weight: 700;
+  font-size: 10.5pt;
+  color: #1a1a1a;
+}
+
+.edu-institution-line {
+  font-size: 10pt;
+  color: #333333;
+  margin-top: 0.5pt;
+}
+
+.edu-dates {
+  color: #555555;        /* inline + in reading order (no float) */
+}
+
+.edu-details {
+  color: #555555;
+  font-style: italic;
+}
+
+/* ── Awards / Languages / Certifications ────────────────────────────────── */
+.simple-list {
+  margin-left: 14pt;
+  padding-left: 0;
+  list-style-type: disc;
+}
+
+.simple-list li {
+  margin-bottom: 1.5pt;
+  font-size: 10pt;
+  line-height: 1.4;
+  color: #1a1a1a;
+}
+
+/* Inline comma-separated variant for languages (short list) */
+.inline-list {
+  font-size: 10pt;
+  color: #1a1a1a;
+}
