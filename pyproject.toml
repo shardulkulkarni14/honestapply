@@ -27,10 +27,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Stage 2 — resume rendering
+# Stage 2 — resume rendering + supporting-document bundling
 resume = [
     "Jinja2>=3.1",
     "weasyprint>=61.0",
+    "pypdf>=4.0",  # docs-bundle merges transcripts/references into one upload
 ]
 # Stages 1 & 2 (discover/enrich) — job boards + HTML parsing
 discover = [
