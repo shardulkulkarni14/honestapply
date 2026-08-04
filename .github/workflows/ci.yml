@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # WeasyPrint renders the offline `simulate` PDFs and needs system Pango.
+      # When the Chromium renderer lands this step can go away.
+      - name: Install Pango (WeasyPrint runtime dependency)
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all]"
+
+      - name: Lint
+        run: ruff check src/ tests/
+
+      - name: Test
+        run: pytest -q
+
+      - name: Offline pipeline smoke test
+        # init seeds the example résumé so simulate can run the full pipeline;
+        # simulate now exits non-zero on any gap, so this genuinely gates CI.
+        run: |
+          honestapply init
+          honestapply simulate
