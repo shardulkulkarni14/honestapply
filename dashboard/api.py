@@ -13,22 +13,22 @@ Run via `honestapply dashboard` (uvicorn, default port 8501).
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from honestapply.config import PATHS
-from honestapply.db.models import Application, Job
+from honestapply.db.events import transition
+from honestapply.db.models import Application, Job, Status
 from honestapply.db.session import init_db, session_scope
 
 ROOT = PATHS.root
 ARCHIVE = ROOT / "data" / "application_archive"
 JD_DIR = ARCHIVE / "jd"
-ACTIVE_JSON = ROOT / "data" / "active_pipeline.json"
 WEB_OUT = Path(__file__).resolve().parent / "web" / "out"
 
 app = FastAPI(title="honestapply dashboard", docs_url="/api/docs")
@@ -69,15 +69,6 @@ def _jd_file(job_id: int) -> Path | None:
     return hits[0] if hits else None
 
 
-def _active_by_company() -> dict[str, dict]:
-    if not ACTIVE_JSON.exists():
-        return {}
-    out = {}
-    for a in json.loads(ACTIVE_JSON.read_text(encoding="utf-8")):
-        out[_company_key(a.get("company", ""))] = a
-    return out
-
-
 def _exists(path: str | None) -> bool:
     return bool(path) and Path(path).exists() and Path(path).stat().st_size > 0
 
@@ -89,7 +80,6 @@ def _exists(path: str | None) -> bool:
 def applications() -> list[dict]:
     """One row per application — everything the table needs, links included."""
     entries = _answer_entries()
-    active = _active_by_company()
 
     rows: list[dict] = []
     with session_scope() as s:
@@ -110,9 +100,12 @@ def applications() -> list[dict]:
         for j in jobs:
             apps = sorted(j.applications, key=lambda a: a.applied_at or 0, reverse=True)
             latest = apps[0] if apps else None
-            act = active.get(_company_key(j.company or ""))
-            status = (act.get("status") if act else None) or (latest.status if latest else j.status)
-            next_action = (act or {}).get("next_action") or (act or {}).get("stage") or ""
+            # The job's own status is authoritative now that post-apply outcomes
+            # (screening/interviewing/offer/rejected/ghosted) are real statuses,
+            # set on the job itself. This replaces the old company-name match
+            # against active_pipeline.json, which collided across employers
+            # sharing a first token (Deutsche Bank / Deutsche Telekom).
+            status = j.status or (latest.status if latest else "")
             rows.append(
                 {
                     "job_id": j.id,
@@ -123,7 +116,7 @@ def applications() -> list[dict]:
                     "score": j.score,
                     "applied_at": latest.applied_at.strftime("%Y-%m-%d") if latest and latest.applied_at else "",
                     "url": j.url or "",
-                    "next_action": next_action,
+                    "notes": j.notes or "",
                     "confirmation": (latest.confirmation_text or "")[:300] if latest else "",
                     "links": {
                         "jd": bool(_jd_file(j.id)) or bool(j.description),
@@ -151,6 +144,58 @@ def summary() -> dict:
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     return {"total": len(rows), "by_status": counts}
+
+
+# ---------------------------------------------------------------------------
+# Writes: the dashboard can now change a job's status and note. Every status
+# change is recorded in job_events, attributed to "dashboard", by the same
+# before_flush listener the pipeline uses — the API doesn't write events itself.
+# ---------------------------------------------------------------------------
+class JobPatch(BaseModel):
+    status: str | None = None
+    notes: str | None = None  # running note on the job (jobs.notes)
+    event_note: str | None = None  # note attached to *this* status transition
+
+
+@app.patch("/api/jobs/{job_id}")
+def patch_job(job_id: int, patch: JobPatch) -> dict:
+    if patch.status is not None and patch.status not in Status.ALL:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown status {patch.status!r}; must be one of {Status.ALL}",
+        )
+    # The context manager must enclose the commit (where the flush fires), so the
+    # listener sees this change as dashboard-sourced with the given note.
+    with transition("dashboard", note=patch.event_note):
+        with session_scope() as s:
+            job = s.get(Job, job_id)
+            if job is None:
+                raise HTTPException(status_code=404, detail=f"no job {job_id}")
+            if patch.status is not None:
+                job.status = patch.status
+            if patch.notes is not None:
+                job.notes = patch.notes
+            result = {"job_id": job.id, "status": job.status, "notes": job.notes or ""}
+    return result
+
+
+@app.get("/api/jobs/{job_id}/events")
+def job_events(job_id: int) -> list[dict]:
+    """The status history of one job — the timeline behind a row."""
+    with session_scope() as s:
+        job = s.get(Job, job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"no job {job_id}")
+        return [
+            {
+                "from": e.from_status,
+                "to": e.to_status,
+                "at": e.at.isoformat() if e.at else None,
+                "source": e.source,
+                "note": e.note,
+            }
+            for e in sorted(job.events, key=lambda e: e.at or e.id)
+        ]
 
 
 # ---------------------------------------------------------------------------

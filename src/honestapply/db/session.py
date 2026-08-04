@@ -11,6 +11,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from honestapply.config import get_settings
+from honestapply.db import events as _events
+
+# Record every Job status change into job_events, for all sessions.
+_events.install()
 
 _engine: Engine | None = None
 _SessionFactory: sessionmaker[Session] | None = None
