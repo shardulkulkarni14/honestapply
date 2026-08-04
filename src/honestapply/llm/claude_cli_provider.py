@@ -15,7 +15,6 @@ import subprocess
 
 from honestapply.llm.base import LLMError, LLMProvider
 
-
 # `claude -p` is Claude Code, an agentic assistant with its own system prompt —
 # not a bare completion endpoint. Handed a templated prompt with no conversational
 # framing, it sometimes decides the input is a stray artifact rather than a task

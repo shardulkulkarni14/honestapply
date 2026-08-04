@@ -19,9 +19,8 @@ Entry point:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import re
+from pathlib import Path
 
 from honestapply.config import PATHS, load_answers, load_profile
 from honestapply.db.models import Job, Status

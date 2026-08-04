@@ -44,8 +44,8 @@ def test_prefilter_scans_beyond_discovered():
     an earlier run kept their Indeed/LinkedIn URL and burned four LLM calls
     before the apply stage rejected them.
     """
-    from honestapply.stages.prefilter import PRE_APPLY_STATUSES
     from honestapply.db.models import Status
+    from honestapply.stages.prefilter import PRE_APPLY_STATUSES
 
     for st in (Status.DISCOVERED, Status.ENRICHED, Status.SCORED, Status.TAILORED):
         assert st in PRE_APPLY_STATUSES

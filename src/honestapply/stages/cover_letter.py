@@ -24,7 +24,7 @@ from honestapply.llm.base import LLMError, get_provider
 from honestapply.llm.untrusted import fence
 from honestapply.logging_setup import get_logger
 from honestapply.resume.renderer import render_cover_letter_pdf
-from honestapply.resume.schema import Resume, list_resumes, keyword_match_score
+from honestapply.resume.schema import Resume, keyword_match_score, list_resumes
 
 logger = get_logger(__name__)
 
