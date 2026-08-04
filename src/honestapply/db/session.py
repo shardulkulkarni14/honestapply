@@ -11,7 +11,6 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from honestapply.config import get_settings
-from honestapply.db.models import Base
 
 _engine: Engine | None = None
 _SessionFactory: sessionmaker[Session] | None = None
@@ -60,9 +59,17 @@ def get_engine(db_path: Path | None = None) -> Engine:
 
 
 def init_db(db_path: Path | None = None) -> Engine:
-    """Create tables if they don't exist. Returns the engine."""
+    """Bring the database schema up to date. Returns the engine.
+
+    Runs Alembic migrations rather than ``create_all`` so that schema changes
+    reach databases that already have data — including databases created in the
+    create_all era, which are stamped at the baseline and then upgraded. See
+    honestapply.db.migrate.
+    """
+    from honestapply.db.migrate import run_migrations
+
     engine = get_engine(db_path)
-    Base.metadata.create_all(engine)
+    run_migrations(engine)
     return engine
 
 

@@ -32,6 +32,7 @@ def url_hash(url: str) -> str:
 
 # --- Status constants (kept as plain strings for SQLite friendliness) ------
 class Status:
+    # Pipeline stages, in order.
     DISCOVERED = "discovered"
     ENRICHED = "enriched"
     SCORED = "scored"
@@ -44,10 +45,25 @@ class Status:
     NEEDS_HUMAN = "needs_human"
     FAILED = "failed"
 
-    ALL = [
+    # Post-apply lifecycle. These come *after* a real submission and are set by
+    # the user (or an inbox sync), not the pipeline — which is why they used to
+    # live in a side JSON file. They are real statuses now so that every
+    # transition is timestamped in job_events and analytics can be computed.
+    SCREENING = "screening"
+    INTERVIEWING = "interviewing"
+    OFFER = "offer"
+    REJECTED = "rejected"
+    GHOSTED = "ghosted"
+
+    # Stages the pipeline itself drives.
+    PIPELINE = [
         DISCOVERED, ENRICHED, SCORED, SKIPPED_LOW_FIT, TAILORED, COVERED,
         READY_TO_APPLY, APPLIED, DRY_RUN_COMPLETED, NEEDS_HUMAN, FAILED,
     ]
+    # Outcomes a human (or inbox sync) records after applying.
+    POST_APPLY = [SCREENING, INTERVIEWING, OFFER, REJECTED, GHOSTED]
+
+    ALL = [*PIPELINE, *POST_APPLY]
 
 
 class Base(DeclarativeBase):
@@ -93,12 +109,21 @@ class Job(Base):
 
     # bookkeeping
     status_reason: Mapped[str | None] = mapped_column(Text, default=None)
+    # Free-form running note the user keeps on a job — distinct from the
+    # per-transition notes on job_events, which are an audit log. This is the
+    # scratchpad ("recruiter prefers mornings"); those are the history.
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow
     )
 
     applications: Mapped[list["Application"]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
+    )
+    events: Mapped[list["JobEvent"]] = relationship(
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="JobEvent.at",
     )
 
     def __repr__(self) -> str:  # pragma: no cover
@@ -119,6 +144,31 @@ class Application(Base):
     error_log: Mapped[str | None] = mapped_column(Text, default=None)
 
     job: Mapped["Job"] = relationship(back_populates="applications")
+
+
+class JobEvent(Base):
+    """One row per status transition — the timestamped history of a job.
+
+    A job's ``status`` column holds only where it is *now*; without this table a
+    transition leaves no trace, so nothing time-based (time-to-response,
+    days-in-stage, funnel velocity) can be computed. Append-only: rows are a log,
+    never edited. ``source`` records who moved it — the pipeline, the dashboard,
+    an inbox sync — which is what lets analytics separate machine steps from
+    human outcomes.
+    """
+
+    __tablename__ = "job_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), index=True)
+    # Null only for the very first event, which has no prior state.
+    from_status: Mapped[str | None] = mapped_column(String(32), default=None)
+    to_status: Mapped[str] = mapped_column(String(32))
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    source: Mapped[str] = mapped_column(String(16), default="pipeline")
+    note: Mapped[str | None] = mapped_column(Text, default=None)
+
+    job: Mapped["Job"] = relationship(back_populates="events")
 
 
 class RunLog(Base):

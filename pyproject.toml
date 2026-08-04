@@ -20,6 +20,7 @@ dependencies = [
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
     "SQLAlchemy>=2.0.25",
+    "alembic>=1.13",
     "PyYAML>=6.0",
     "python-dotenv>=1.0",
     "structlog>=24.1",
