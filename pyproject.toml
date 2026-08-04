@@ -69,6 +69,13 @@ packages = ["src/honestapply"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Put the package source and the repo root on sys.path for the test session, so
+# `import honestapply` and `import dashboard` resolve the same way regardless of
+# how pytest is launched (console script vs `python -m`) or whether the package
+# is installed editable. Without this, dashboard/ — which is not part of the
+# installed wheel — is importable under `python -m pytest` but not under CI's
+# `pytest`.
+pythonpath = ["src", "."]
 
 [tool.ruff]
 line-length = 100
