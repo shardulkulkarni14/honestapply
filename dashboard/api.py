@@ -189,6 +189,23 @@ def analytics() -> dict:
         return compute(s)
 
 
+@app.get("/api/jobs/{job_id}/provenance")
+def provenance(job_id: int) -> dict:
+    """Attestation that every claim in the tailored résumé traces to source and
+    survives into the parsed PDF — the no-fabrication guarantee, made inspectable."""
+    from honestapply.config import PATHS as _PATHS
+    from honestapply.provenance import attest_job
+
+    with session_scope() as s:
+        job = s.get(Job, job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"no job {job_id}")
+        att = attest_job(job, _PATHS.resumes_dir)
+        if att is None:
+            raise HTTPException(status_code=409, detail="job is not tailored yet")
+        return att.as_dict()
+
+
 @app.get("/api/jobs/{job_id}/events")
 def job_events(job_id: int) -> list[dict]:
     """The status history of one job — the timeline behind a row."""
