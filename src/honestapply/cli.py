@@ -7,7 +7,6 @@ module must expose are documented inline next to the command.
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import sys
@@ -398,7 +397,8 @@ def simulate(jobs: int = typer.Option(5, help="How many fake jobs to run end-to-
     """End-to-end dry simulation with fake jobs + stub LLM (no keys/network/browser)."""
     from honestapply.sim import run_simulation
 
-    run_simulation(num_jobs=jobs)
+    if not run_simulation(num_jobs=jobs):
+        raise typer.Exit(1)
 
 
 @app.command()

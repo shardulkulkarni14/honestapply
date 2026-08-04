@@ -114,7 +114,7 @@ def _seed(num_jobs: int) -> list[int]:
     return ids
 
 
-def run_simulation(num_jobs: int = 5) -> None:
+def run_simulation(num_jobs: int = 5) -> bool:
     # Force offline, mock, isolated DB. Set BEFORE settings are first read.
     os.environ["LLM_PROVIDER"] = "stub"
     os.environ["HONESTAPPLY_APPLY_MOCK"] = "1"
@@ -123,9 +123,14 @@ def run_simulation(num_jobs: int = 5) -> None:
 
     get_settings.cache_clear()  # discard any cached non-stub settings
 
+    # Start from a genuinely empty database every time — simulate is the
+    # reproducible smoke test, so a previous run (or a run that failed partway,
+    # e.g. before a résumé was seeded) must not leak state into this one. In WAL
+    # mode the committed data can live in the -wal/-shm sidecars, so removing
+    # only the main file would carry stale rows forward.
     sim_db = PATHS.data_dir / "honestapply_sim.db"
-    if sim_db.exists():
-        sim_db.unlink()
+    for path in (sim_db, *sim_db.parent.glob(sim_db.name + "-*")):
+        path.unlink(missing_ok=True)
 
     from honestapply.db.session import init_db
 
@@ -161,10 +166,10 @@ def run_simulation(num_jobs: int = 5) -> None:
         run_apply(dry_run=True, no_safety=False)
     console.print("  [green]✓[/green] apply (dry-run): done\n")
 
-    _summary(ids)
+    return _summary(ids)
 
 
-def _summary(ids: list[int]) -> None:
+def _summary(ids: list[int]) -> bool:
     from honestapply.db.models import Application, Job
     from honestapply.db.session import session_scope
 
@@ -209,7 +214,13 @@ def _summary(ids: list[int]) -> None:
     console.print(
         "View it: [cyan]HONESTAPPLY_DB_PATH=data/honestapply_sim.db honestapply dashboard[/cyan]\n"
     )
-    if ok_resume == total and ok_cover == total and ok_apply == total:
+    passed = ok_resume == total and ok_cover == total and ok_apply == total
+    if passed:
         console.print("[bold green]SIMULATION PASSED — full pipeline works end-to-end.[/bold green]")
     else:
-        console.print("[bold yellow]Simulation completed with gaps — see table above.[/bold yellow]")
+        console.print(
+            "[bold red]SIMULATION FAILED — see the gaps above.[/bold red] "
+            "The usual cause on a fresh checkout is no résumé: run "
+            "[cyan]honestapply init[/cyan] first to seed the example."
+        )
+    return passed
