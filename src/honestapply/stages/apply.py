@@ -13,7 +13,6 @@ Entry point (called by CLI):
 
 from __future__ import annotations
 
-import glob
 import json
 import os
 import re
@@ -35,7 +34,7 @@ from honestapply.config import (
     load_ats_selectors,
     load_profile,
 )
-from honestapply.db.models import Application, Job, Status, url_hash
+from honestapply.db.models import Application, Job, Status
 from honestapply.db.session import session_scope
 from honestapply.logging_setup import get_logger
 

@@ -18,7 +18,6 @@ Quirks / known friction points:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import requests

@@ -39,7 +39,6 @@ from honestapply.resume.schema import (
     iter_immutable_strings,
     keyword_match_score,
     list_resumes,
-    load_resume,
 )
 
 if TYPE_CHECKING:

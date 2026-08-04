@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from honestapply.config import PATHS, get_settings, load_profile
+from honestapply.config import PATHS, get_settings
 from honestapply.db.models import Job, Status
 from honestapply.db.session import session_scope
 from honestapply.llm.base import LLMError, get_provider

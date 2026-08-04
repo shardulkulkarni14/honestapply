@@ -24,8 +24,7 @@ from typing import Any
 from sqlalchemy import select
 
 from honestapply.ats.detect import detect_ats
-from honestapply.config import get_settings
-from honestapply.db.models import Job, Status, utcnow
+from honestapply.db.models import Job, Status
 from honestapply.db.session import init_db, session_scope
 from honestapply.logging_setup import get_logger
 

@@ -23,9 +23,12 @@ from __future__ import annotations
 
 import datetime as _dt
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+if TYPE_CHECKING:
+    from markupsafe import Markup
 
 from honestapply.resume.schema import Resume, ResumeFacts
 

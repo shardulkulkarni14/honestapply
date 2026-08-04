@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     DateTime,
-    Float,
     ForeignKey,
     Integer,
     String,
