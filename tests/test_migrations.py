@@ -9,6 +9,7 @@ models catches that at CI time.
 
 from __future__ import annotations
 
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect
 
 from honestapply.db.migrate import (
@@ -18,6 +19,15 @@ from honestapply.db.migrate import (
     run_migrations,
 )
 from honestapply.db.models import Base
+
+
+def _head_revision() -> str:
+    """The latest migration, read from the scripts — so adding a migration never
+    breaks these tests just for pinning a stale revision id."""
+    from sqlalchemy import create_engine
+
+    cfg = make_alembic_config(create_engine("sqlite://"))
+    return ScriptDirectory.from_config(cfg).get_current_head()
 
 
 def _schema(engine) -> dict[str, dict[str, bool]]:
@@ -47,7 +57,7 @@ def test_head_matches_the_models(tmp_path):
 def test_fresh_db_lands_at_head(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/fresh.db")
     run_migrations(engine)
-    assert current_revision(engine) == "0002_lifecycle_events"
+    assert current_revision(engine) == _head_revision()
 
 
 def test_migrations_are_reversible(tmp_path):
@@ -89,7 +99,7 @@ def test_pre_alembic_database_upgrades_in_place(tmp_path):
     run_migrations(engine)
 
     insp = inspect(engine)
-    assert current_revision(engine) == "0002_lifecycle_events"
+    assert current_revision(engine) == _head_revision()
     assert "job_events" in insp.get_table_names()
     assert "notes" in {c["name"] for c in insp.get_columns("jobs")}
     with engine.connect() as conn:
@@ -108,4 +118,4 @@ def test_init_db_is_idempotent(tmp_path):
     sess._engine = None
     sess.init_db(db)
     second = current_revision(create_engine(f"sqlite:///{db}"))
-    assert first == second == "0002_lifecycle_events"
+    assert first == second == _head_revision()

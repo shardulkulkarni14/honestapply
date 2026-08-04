@@ -103,6 +103,16 @@ def _score_one(job: Job, provider, profile_summary: str, threshold: int) -> None
     job.matched_keywords = json.dumps(matched_keywords)
     job.gap_flags = json.dumps(gap_flags)
 
+    # Classify into grouping dimensions while we have the full posting. Cheap and
+    # deterministic (see honestapply.taxonomy); only fills fields left unset, so
+    # a manual override from the dashboard is never clobbered by a re-score.
+    from honestapply.taxonomy import classify
+
+    tax = classify(job.title or "", job.location or "", job.description)
+    for field, value in tax.items():
+        if getattr(job, field) is None and value is not None:
+            setattr(job, field, value)
+
     if score < threshold:
         job.status = Status.SKIPPED_LOW_FIT
         job.status_reason = f"score {score} < min {threshold}"

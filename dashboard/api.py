@@ -179,6 +179,16 @@ def patch_job(job_id: int, patch: JobPatch) -> dict:
     return result
 
 
+@app.get("/api/analytics")
+def analytics() -> dict:
+    """Outcome analytics — response/interview rates by ATS, role, and score band,
+    time-to-response, and a data-driven min-score recommendation."""
+    from honestapply.analytics import compute
+
+    with session_scope() as s:
+        return compute(s)
+
+
 @app.get("/api/jobs/{job_id}/events")
 def job_events(job_id: int) -> list[dict]:
     """The status history of one job — the timeline behind a row."""

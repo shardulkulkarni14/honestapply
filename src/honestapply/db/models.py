@@ -102,6 +102,16 @@ class Job(Base):
     matched_keywords: Mapped[str | None] = mapped_column(Text, default=None)  # JSON list
     gap_flags: Mapped[str | None] = mapped_column(Text, default=None)  # JSON list
 
+    # taxonomy — set once (LLM-classified at score time, editable after). These
+    # exist to be *grouped by* in analytics and consumed by prefilter, not as
+    # browsing chrome: "response rate by role_family / by ATS" is the question a
+    # job seeker actually needs answered, and none of it is possible without a
+    # dimension to group on. All nullable; a job with none still works.
+    role_family: Mapped[str | None] = mapped_column(String(32), default=None, index=True)
+    seniority: Mapped[str | None] = mapped_column(String(16), default=None)
+    work_model: Mapped[str | None] = mapped_column(String(16), default=None)  # remote|hybrid|onsite
+    employer_tier: Mapped[str | None] = mapped_column(String(16), default=None)  # target|neutral|blocklist
+
     # artifacts
     matched_resume_path: Mapped[str | None] = mapped_column(Text, default=None)
     tailored_resume_path: Mapped[str | None] = mapped_column(Text, default=None)
