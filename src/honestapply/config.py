@@ -69,10 +69,22 @@ class Settings(BaseSettings):
     honestapply_min_score: int = 7
     honestapply_dry_run_first_n: int = 3
 
+    # Application conventions (CV format, salary/date formatting, salutations,
+    # work-auth phrasing, account-walled ATSes). Defaults to the German market —
+    # the beachhead — and is overridable; "en" gives neutral international.
+    honestapply_market: str = "de-DE"
+
     # --- Derived helpers ---
     @property
     def effective_daily_cap(self) -> int:
         return min(self.honestapply_daily_cap, HARD_DAILY_CEILING)
+
+    @property
+    def market(self):
+        """The configured Market (conventions for the target country)."""
+        from honestapply.markets.registry import get_market
+
+        return get_market(self.honestapply_market)
 
     @property
     def db_path(self) -> Path:

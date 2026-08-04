@@ -41,6 +41,22 @@ def test_dry_run_creates_applications():
         assert all(j.status == Status.DRY_RUN_COMPLETED for j in jobs)
 
 
+def test_account_walled_ats_routes_to_needs_human():
+    """A Umantis/SuccessFactors job is sent to a human before any browser session,
+    because there is no guest-apply path behind their account wall."""
+    from honestapply.db.models import Job, Status
+    from honestapply.db.session import session_scope
+    from honestapply.stages.apply import run_apply
+
+    _seed_covered(1, ats="umantis", host="recruitingapp-9.umantis.com")
+    run_apply(dry_run=True, limit=1)
+
+    with session_scope() as s:
+        job = s.query(Job).one()
+        assert job.status == Status.NEEDS_HUMAN
+        assert "account" in (job.status_reason or "").lower()
+
+
 def test_first_n_dry_run_guard():
     """With dry_run=False and safety on, the first N submissions are still dry."""
     from honestapply.config import get_settings

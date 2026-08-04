@@ -416,6 +416,24 @@ def _process_job(
                 s.add(Application(job_id=j.id, mode="dry_run", status="needs_human", error_log=reason))
         return
 
+    # ── ACCOUNT-WALLED guard ──────────────────────────────────────────────────
+    # Some ATSes (Haufe Umantis, SAP SuccessFactors — common for German
+    # employers) require a portal account before any form can be filled. There is
+    # no guest-apply path, so route to a human up front rather than spending a
+    # browser session discovering the wall.
+    from honestapply.ats.detect import is_account_walled
+
+    if is_account_walled(ats_type):
+        reason = f"{ats_type} requires a portal account (no guest apply)"
+        log.warning("apply.account_walled_skip", job_id=job.id, reason=reason)
+        with session_scope() as s:
+            j = s.get(Job, job.id)
+            if j:
+                j.status = Status.NEEDS_HUMAN
+                j.status_reason = reason
+                s.add(Application(job_id=j.id, mode="dry_run", status="needs_human", error_log=reason))
+        return
+
     if ats_type == "linkedin":
         if not enable_linkedin_easy_apply:
             reason = "LinkedIn Easy Apply disabled (ban risk)"
