@@ -10,6 +10,7 @@ ASHBY = "ashby"
 WORKDAY = "workday"
 SMARTRECRUITERS = "smartrecruiters"
 LINKEDIN = "linkedin"
+INSTAHYRE = "instahyre"
 # German/DACH portals that sit behind a mandatory account/login wall — no guest
 # apply exists, so they can never be completed unattended.
 UMANTIS = "umantis"
@@ -41,6 +42,8 @@ def detect_ats(url: str) -> str:
         return SUCCESSFACTORS
     if "linkedin.com" in host:
         return LINKEDIN
+    if "instahyre.com" in host:
+        return INSTAHYRE
     return GENERIC
 
 

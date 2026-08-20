@@ -51,6 +51,9 @@ _ATS_MODULES = {
     "ashby": "honestapply.ats.ashby",
     "smartrecruiters": "honestapply.ats.smartrecruiters",
     "workday": "honestapply.ats.workday",
+    # Aggregator board: one entry yields postings across many companies, each
+    # carrying its own company name (see honestapply.ats.instahyre).
+    "instahyre": "honestapply.ats.instahyre",
 }
 
 
