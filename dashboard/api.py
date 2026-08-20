@@ -83,13 +83,23 @@ def applications() -> list[dict]:
 
     rows: list[dict] = []
     with session_scope() as s:
-        from sqlalchemy import select
+        from sqlalchemy import or_, select
         from sqlalchemy.orm import joinedload
 
+        # Show a job if it has an application row OR its status is one we actively
+        # track. The second case matters for inbound-recruiter interviews (e.g. a
+        # recruiter reaches out, we go straight to interviewing) that never went
+        # through the apply stage and so have no Application row — an inner join
+        # on Application would silently drop them.
+        tracked = {
+            "applied", "needs_human", "failed",
+            "screening", "interviewing", "offer", "rejected", "ghosted",
+        }
         jobs = (
             s.execute(
                 select(Job)
-                .join(Application, Application.job_id == Job.id)
+                .outerjoin(Application, Application.job_id == Job.id)
+                .where(or_(Application.id.isnot(None), Job.status.in_(tracked)))
                 .options(joinedload(Job.applications))
                 .distinct()
             )
@@ -332,9 +342,16 @@ def favicon():
 
 @app.get("/", include_in_schema=False)
 def index() -> HTMLResponse:
+    # Prefer the built Next.js export; otherwise the self-contained editable
+    # dashboard (dashboard/index.html) — a real-time page that reads /api and
+    # writes back via PATCH, so it never needs a build step. The tiny _FALLBACK
+    # remains only for the case where even that file is missing.
     built = WEB_OUT / "index.html"
     if built.exists():
         return HTMLResponse(built.read_text(encoding="utf-8"))
+    editable = Path(__file__).parent / "index.html"
+    if editable.exists():
+        return HTMLResponse(editable.read_text(encoding="utf-8"))
     return HTMLResponse(_FALLBACK)
 
 
