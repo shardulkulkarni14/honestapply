@@ -24,6 +24,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import yaml
+from sqlalchemy import func
 
 from honestapply.ats.detect import detect_ats
 from honestapply.config import (
@@ -310,9 +311,17 @@ def run_apply(
         query = s.query(Job).filter(
             Job.status.in_((Status.COVERED, Status.DRY_RUN_COMPLETED))
         )
-        if limit is not None:
-            query = query.limit(limit)
         jobs = query.all()
+
+    # Spread employers across the run. The query returns rows in id order, which
+    # groups a company's roles together and can send several back-to-back
+    # applications to one employer in a single run — spraying rather than
+    # interest. Interleaving alone is not enough (a company with many open roles
+    # still gets several per run), so `_over_company_cap` in _process_job enforces
+    # a rolling-24h per-employer limit as well.
+    jobs = _interleave_by_company(jobs)
+    if limit is not None:
+        jobs = jobs[:limit]
 
     if not jobs:
         log.info("apply.no_covered_jobs")
@@ -360,6 +369,55 @@ def run_apply(
         processed_this_run += 1
 
 
+def _interleave_by_company(jobs: list[Job]) -> list[Job]:
+    """Reorder so consecutive jobs come from different employers where possible.
+
+    Round-robins across per-company queues: one job from each company in turn,
+    then the next from each, and so on. Companies with more open roles simply
+    reappear in later rounds instead of monopolising a contiguous block.
+
+    With a single employer in the list the order is unchanged — nothing to
+    interleave. Relative order within a company is preserved.
+    """
+    by_company: dict[str, list[Job]] = {}
+    for job in jobs:
+        key = (job.company or "").strip().lower()
+        by_company.setdefault(key, []).append(job)
+
+    ordered: list[Job] = []
+    queues = list(by_company.values())
+    while queues:
+        # Drop companies whose queue is exhausted, then take one from each.
+        queues = [q for q in queues if q]
+        for q in queues:
+            ordered.append(q.pop(0))
+    return ordered
+
+
+def _over_company_cap(session, company: str, cap: int) -> bool:
+    """True if this employer already received ``cap`` real submissions in 24h.
+
+    Counts DISTINCT job_id rather than Application rows: the apply stage can
+    write more than one row for the same job, so a plain row count would
+    overstate how many roles the employer actually saw.
+    """
+    if cap <= 0 or not company:
+        return False
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    recent = (
+        session.query(func.count(func.distinct(Application.job_id)))
+        .join(Job, Job.id == Application.job_id)
+        .filter(
+            func.lower(func.trim(Job.company)) == company.strip().lower(),
+            Application.mode == "real",
+            Application.status == "applied",
+            Application.applied_at >= cutoff,
+        )
+        .scalar()
+    ) or 0
+    return recent >= cap
+
+
 def _process_job(
     job: Job,
     dry_run: bool,
@@ -397,6 +455,21 @@ def _process_job(
                 if _has_real_submission(s, other.id):
                     log.info("apply.dedup_url_hash", job_id=job.id, duplicate_of=other.id)
                     return
+
+        # (c) respect the per-employer rolling-24h cap. Several roles at one
+        # company is fine over time; several in one sitting is spraying. The job
+        # stays COVERED so a later run can send it once the window clears — this
+        # is a deferral, not a rejection.
+        company_cap = getattr(settings, "honestapply_per_company_daily_cap", 0)
+        if _over_company_cap(s, job.company or "", company_cap):
+            log.info(
+                "apply.company_cap_reached",
+                job_id=job.id,
+                company=job.company,
+                cap=company_cap,
+            )
+            print(f"  SKIP (company cap {company_cap}/24h reached): {job.company}")
+            return
 
     # ── LINKEDIN guard ────────────────────────────────────────────────────────
     job_url = job.url or ""

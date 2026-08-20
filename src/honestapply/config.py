@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     honestapply_daily_cap: int = 25
     honestapply_min_score: int = 7
     honestapply_dry_run_first_n: int = 3
+    # Applying to one employer many times in a row reads as spraying, not
+    # interest. An id-ordered queue groups a company's roles together, which can
+    # send several back-to-back applications to the same employer in one run. Two
+    # guards prevent that: company interleaving in the apply queue, and this
+    # rolling-24h per-employer cap.
+    honestapply_per_company_daily_cap: int = 2
 
     # Application conventions (CV format, salary/date formatting, salutations,
     # work-auth phrasing, account-walled ATSes). Defaults to the German market —
