@@ -46,6 +46,19 @@
   .card .l{font-size:11.5px; color:var(--muted); text-transform:capitalize; display:flex; align-items:center; gap:6px}
   .card .l::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--c,var(--i-default))}
 
+  /* upcoming interviews banner */
+  .upcoming{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px}
+  .upcoming .lead{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-right:2px}
+  .ivchip{display:inline-flex; align-items:center; gap:9px; background:var(--panel);
+    border:1px solid var(--line); border-left:3px solid var(--i-interviewing);
+    border-radius:10px; padding:7px 13px; font-size:12.5px; box-shadow:var(--shadow)}
+  .ivchip.soon{border-left-color:var(--i-needs_human); background:var(--accent-soft)}
+  .ivchip.past{opacity:.5}
+  .ivchip .co{font-weight:600}
+  .ivchip .dt{color:var(--i-interviewing); font-weight:600; font-variant-numeric:tabular-nums}
+  .ivchip.soon .dt{color:var(--i-needs_human)}
+  .ivchip.past .dt{color:var(--muted)}
+
   /* search */
   .toolbar{display:flex; gap:12px; align-items:center; margin-bottom:14px}
   #q{
@@ -60,8 +73,12 @@
   .scroll{overflow-x:auto}
   table{border-collapse:collapse; width:100%; min-width:1000px; table-layout:fixed}
   col.c-company{width:12%} col.c-role{width:19%} col.c-loc{width:11%}
-  col.c-status{width:112px} col.c-score{width:56px} col.c-applied{width:92px}
-  col.c-files{width:12%} col.c-notes{width:23%}
+  col.c-status{width:134px} col.c-score{width:60px} col.c-applied{width:92px}
+  col.c-files{width:11%} col.c-notes{width:22%}
+  .nextline{margin-top:7px; font-size:11.5px; font-weight:600; color:var(--i-interviewing);
+    font-variant-numeric:tabular-nums; white-space:nowrap; display:flex; align-items:center; gap:5px}
+  .nextline::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor; flex:none}
+  .nextline.past{color:var(--muted-2); font-weight:500}
   thead th{
     position:sticky; top:0; z-index:2; background:var(--panel-2); color:var(--muted);
     font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em;
@@ -125,6 +142,8 @@
 
   <div class="cards" id="cards"></div>
 
+  <div class="upcoming" id="upcoming" hidden></div>
+
   <div class="toolbar">
     <input id="q" placeholder="Search company, role, location, notes…" autocomplete="off">
     <span class="count" id="count"></span>
@@ -180,6 +199,33 @@ function fileLinks(r){
   return out.length? `<div class="links">${out.join('')}</div>` : '<span class="links"><span class="none">—</span></span>';
 }
 
+// The interview date lives as a small line under the status pill.
+function statusCell(r){
+  let extra='';
+  if(r.next_interview){
+    const nowIso = new Date().toISOString().slice(0,16);
+    const past = r.next_interview_iso && r.next_interview_iso < nowIso;
+    extra = `<div class="nextline${past?' past':''}">${esc(r.next_interview)}</div>`;
+  }
+  return statusSelect(r) + extra;
+}
+
+// Banner: only genuinely upcoming interviews — dated and in the future,
+// soonest first. TBD/past are left out so it stays a clean "what's next".
+function renderUpcoming(){
+  const nowIso = new Date().toISOString().slice(0,16);
+  const up = DATA
+    .filter(r=>r.next_interview_iso && r.next_interview_iso >= nowIso)
+    .sort((a,b)=>a.next_interview_iso.localeCompare(b.next_interview_iso));
+  const el = document.getElementById('upcoming');
+  if(!up.length){ el.hidden=true; el.innerHTML=''; return; }
+  el.hidden=false;
+  el.innerHTML = '<span class="lead">Next up</span>' + up.map((r,i)=>
+    `<span class="ivchip${i===0?' soon':''}" title="${esc(r.title)}">`
+      + `<span class="co">${esc(r.company)}</span><span class="dt">${esc(r.next_interview)}</span></span>`
+  ).join('');
+}
+
 function statusSelect(r){
   const opts = STATUSES.map(s=>`<option value="${s}" ${s===r.status?'selected':''}>${s.replace('_',' ')}</option>`).join('');
   return `<select class="status-sel" style="background-color:${COLOR(r.status)}"
@@ -200,7 +246,7 @@ async function setStatus(sel){
     await patch(id, {status});
     sel.style.backgroundColor = COLOR(status);
     const row = DATA.find(r=>r.job_id===id); if(row) row.status=status;
-    renderCards();
+    renderCards(); renderUpcoming();
     toast('→ '+status.replace('_',' '));
   }catch(e){ toast('Failed: '+e.message, true); load(); }
 }
@@ -242,7 +288,7 @@ function renderRows(){
       <td class="company">${esc(r.company)}</td>
       <td class="role">${esc(r.title)}</td>
       <td class="loc">${esc(r.location)||'—'}</td>
-      <td>${statusSelect(r)}</td>
+      <td>${statusCell(r)}</td>
       <td class="score num">${r.score??''}</td>
       <td class="applied">${r.applied_at||'—'}</td>
       <td>${fileLinks(r)}</td>
@@ -262,7 +308,7 @@ async function load(){
     DATA=apps;
     document.getElementById('subtitle').textContent =
       `${DATA.length} tracked • ${(sum&&sum.by_status&&sum.by_status.interviewing)||DATA.filter(r=>r.status==='interviewing').length} interviewing`;
-    renderCards(); renderRows();
+    renderCards(); renderUpcoming(); renderRows();
   }catch(e){
     document.getElementById('rows').innerHTML='<tr><td colspan="8" class="empty">failed to load API</td></tr>';
   }

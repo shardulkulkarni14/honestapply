@@ -14,6 +14,7 @@ Run via `honestapply dashboard` (uvicorn, default port 8501).
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -76,6 +77,43 @@ def _exists(path: str | None) -> bool:
 # ---------------------------------------------------------------------------
 # JSON API
 # ---------------------------------------------------------------------------
+_MONTHS = {m: i for i, m in enumerate(
+    ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], start=1)}
+_WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+# Matches "Wed 9 Sep 2026 13:30" / "Mon 7 Sep 2026 10" (time optional) as
+# written into a job's status_reason/notes when an interview is scheduled.
+_INTERVIEW_DATE_RE = re.compile(
+    r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2})\s+"
+    r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})"
+    r"(?:\s+(\d{1,2})(?::(\d{2}))?)?"
+)
+
+
+def _next_interview(*texts: str) -> tuple[str, str]:
+    """Extract the first scheduled interview date from the given free-text
+    fields. Returns (iso_for_sorting, human_display), or ("", "") if none."""
+    for text in texts:
+        if not text:
+            continue
+        m = _INTERVIEW_DATE_RE.search(text)
+        if not m:
+            continue
+        day, year = int(m.group(1)), int(m.group(3))
+        month = _MONTHS[m.group(2)]
+        hour = int(m.group(4)) if m.group(4) else 0
+        minute = int(m.group(5)) if m.group(5) else 0
+        try:
+            dt = datetime(year, month, day, hour, minute)
+        except ValueError:
+            continue
+        disp = f"{_WEEKDAYS[dt.weekday()]} {day} {m.group(2)}"
+        if m.group(4):
+            disp += f" {hour:02d}:{minute:02d}"
+        return dt.strftime("%Y-%m-%dT%H:%M"), disp
+    return "", ""
+
+
 @app.get("/api/applications")
 def applications() -> list[dict]:
     """One row per application — everything the table needs, links included."""
@@ -116,6 +154,7 @@ def applications() -> list[dict]:
             # against active_pipeline.json, which collided across employers
             # sharing a first token (Deutsche Bank / Deutsche Telekom).
             status = j.status or (latest.status if latest else "")
+            ni_iso, ni_disp = _next_interview(j.status_reason or "", j.notes or "")
             rows.append(
                 {
                     "job_id": j.id,
@@ -127,6 +166,9 @@ def applications() -> list[dict]:
                     "applied_at": latest.applied_at.strftime("%Y-%m-%d") if latest and latest.applied_at else "",
                     "url": j.url or "",
                     "notes": j.notes or "",
+                    "status_reason": j.status_reason or "",
+                    "next_interview": ni_disp,
+                    "next_interview_iso": ni_iso,
                     "confirmation": (latest.confirmation_text or "")[:300] if latest else "",
                     "links": {
                         "jd": bool(_jd_file(j.id)) or bool(j.description),
