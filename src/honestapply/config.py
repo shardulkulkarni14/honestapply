@@ -188,11 +188,19 @@ class SearchEntry(BaseModel):
 
 
 class Employer(BaseModel):
-    """A company whose ATS board we scrape directly via its public read API."""
+    """A company whose ATS board we scrape directly via its public read API.
+
+    "instahyre" is not a single-company ATS but an India job-board aggregator:
+    one entry yields postings across many companies, each carrying its own
+    company name (see honestapply.ats.instahyre). It shares this dispatch path
+    because discover routes on `ats` -> `_ATS_MODULES`.
+    """
 
     model_config = ConfigDict(extra="allow")
     name: str
-    ats: Literal["greenhouse", "lever", "ashby", "smartrecruiters", "workday"]
+    ats: Literal[
+        "greenhouse", "lever", "ashby", "smartrecruiters", "workday", "instahyre"
+    ]
     # The board identifier in that ATS's URL (e.g. greenhouse board token,
     # lever site, ashby org slug, SmartRecruiters company identifier).
     # Defaults to a lowercased name guess.
@@ -286,7 +294,21 @@ def load_employers(path: Path | None = None) -> list[Employer]:
         return []
     raw = _read_structured(path) or []
     items = raw.get("employers", raw) if isinstance(raw, dict) else raw
-    return [Employer(**item) for item in items]
+    # Parse each entry independently: a single malformed employer must not abort
+    # the whole load and silently disable ATS-board discovery for every other
+    # company. Skip and warn on bad entries instead.
+    employers: list[Employer] = []
+    for item in items:
+        try:
+            employers.append(Employer(**item))
+        except Exception as exc:  # noqa: BLE001 — one bad row shouldn't kill discovery
+            from honestapply.logging_setup import get_logger
+
+            name = item.get("name") if isinstance(item, dict) else item
+            get_logger(__name__).warning(
+                "config.bad_employer_entry", entry=name, error=str(exc)
+            )
+    return employers
 
 
 def load_profile(path: Path | None = None) -> Profile:

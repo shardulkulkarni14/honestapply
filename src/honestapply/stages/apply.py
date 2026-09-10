@@ -418,6 +418,28 @@ def _over_company_cap(session, company: str, cap: int) -> bool:
     return recent >= cap
 
 
+def _company_total_submissions(session, company: str) -> int:
+    """All-time count of DISTINCT roles this employer has been really applied to.
+
+    The 24h cap above only stops same-day spraying; it resets overnight, so a
+    company can still accumulate many applications across days (observed: Holidu
+    reached 4+ over Sep 5-8). This cumulative count backs a hard lifetime cap so
+    the pipeline never keeps re-applying to one employer role after role.
+    """
+    if not company:
+        return 0
+    return (
+        session.query(func.count(func.distinct(Application.job_id)))
+        .join(Job, Job.id == Application.job_id)
+        .filter(
+            func.lower(func.trim(Job.company)) == company.strip().lower(),
+            Application.mode == "real",
+            Application.status == "applied",
+        )
+        .scalar()
+    ) or 0
+
+
 def _process_job(
     job: Job,
     dry_run: bool,
@@ -469,6 +491,29 @@ def _process_job(
                 cap=company_cap,
             )
             print(f"  SKIP (company cap {company_cap}/24h reached): {job.company}")
+            return
+
+        # (d) cumulative lifetime cap. The 24h cap resets overnight, so without
+        # this a company keeps collecting applications day after day (role after
+        # role), which reads as spam. Once an employer has this many real
+        # submissions total, RETIRE the job (terminal status) so it drops out of
+        # the COVERED/DRY_RUN_COMPLETED queue instead of being re-tried forever.
+        total_cap = getattr(settings, "honestapply_per_company_total_cap", 2)
+        if total_cap > 0 and _company_total_submissions(s, job.company or "") >= total_cap:
+            log.info(
+                "apply.company_total_cap_reached",
+                job_id=job.id,
+                company=job.company,
+                cap=total_cap,
+            )
+            print(f"  RETIRE (company lifetime cap {total_cap} reached): {job.company}")
+            jrow = s.get(Job, job.id)
+            if jrow is not None:
+                jrow.status = "skipped_company_cap"
+                jrow.status_reason = (
+                    f"Retired: employer already has {total_cap}+ submitted "
+                    f"applications (lifetime cap), not re-applying to avoid spam."
+                )
             return
 
     # ── LINKEDIN guard ────────────────────────────────────────────────────────

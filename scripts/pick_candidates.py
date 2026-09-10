@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 import httpx
 from sqlalchemy import select
 
-from honestapply.db.models import Job, Status
+from honestapply.db.models import Application, Job, Status
 from honestapply.db.session import session_scope
 from honestapply.stages.prefilter import DEAD_HOST_MARKERS
 
@@ -186,7 +186,7 @@ _OPEN = [Status.DISCOVERED, Status.ENRICHED, Status.SCORED, Status.TAILORED]
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--country", choices=["DE", "IN", "EU"], required=True)
+    ap.add_argument("--country", choices=["DE", "IN", "EU", "EU_OTHER"], required=True)
     ap.add_argument("--limit", type=int, default=30)
     ap.add_argument(
         "--remote-only",
@@ -211,6 +211,15 @@ def main() -> None:
         default="config/big_medium_employers.txt",
         help="Curated big/medium employer names (one per line, # comments).",
     )
+    ap.add_argument(
+        "--per-company-cap",
+        type=int,
+        default=2,
+        help="Never pick a company that already has this many submitted "
+             "applications (status='applied'), and never let one cycle push a "
+             "company past it. Stops the pipeline spraying one employer with "
+             "many different roles, which reads as spam (default 2).",
+    )
     args = ap.parse_args()
 
     known_big: list[str] = []
@@ -230,6 +239,12 @@ def main() -> None:
     elif args.country == "EU":
         # Germany plus the rest of Europe.
         pattern = re.compile(f"({_DE.pattern})|({_EU_OTHER.pattern})", re.IGNORECASE)
+    elif args.country == "EU_OTHER":
+        # Europe excluding Germany. _EU_OTHER contains no German cities and no
+        # "germany/deutschland", so a purely-German posting won't match; the only
+        # overlap is genuinely pan-European terms (europe/eu/emea/dach/nordics),
+        # which belong in the Europe batch anyway.
+        pattern = _EU_OTHER
     else:
         pattern = _DE
 
@@ -244,6 +259,20 @@ def main() -> None:
             ).all()
         }
         blocked = rejected | _HARD_EXCLUDE
+
+        # How many real applications each company has already received. Only
+        # status='applied' counts — a dry run never reaches the employer, and a
+        # needs_human/failed attempt never submitted. This is the anti-spam
+        # signal: six applications to one company in two days reads as spam and
+        # makes the profile look unfocused.
+        applied_counts: dict[str, int] = {}
+        for company in s.scalars(
+            select(Job.company)
+            .join(Application, Application.job_id == Job.id)
+            .where(Application.status == "applied")
+        ).all():
+            key = (company or "").strip().lower()
+            applied_counts[key] = applied_counts.get(key, 0) + 1
 
         rows = s.scalars(
             select(Job).where(Job.status.in_(_OPEN))
@@ -318,7 +347,7 @@ def main() -> None:
                     city_rank = 1
             picked.append(
                 (on_profile, city_rank, j.score or 0, j.discovered_at.isoformat(),
-                 j.id, j.url or "")
+                 j.id, j.url or "", company.lower())
             )
 
         # On-profile titles first, then preferred city, then highest known score,
@@ -326,9 +355,21 @@ def main() -> None:
         # a thin market still yields candidates rather than returning nothing.
         picked.sort(reverse=True)
 
+        # Per-company cap, applied AFTER the sort so each company keeps its
+        # best-ranked roles. Counts existing submitted applications plus what
+        # this batch has already taken, so a company at or above the cap yields
+        # nothing and no single cycle can push one past it.
+        capped: list[tuple[int, str]] = []
+        batch_counts: dict[str, int] = {}
+        for t in picked:
+            ck = t[6]
+            if applied_counts.get(ck, 0) + batch_counts.get(ck, 0) >= args.per_company_cap:
+                continue
+            capped.append((t[4], t[5]))
+            batch_counts[ck] = batch_counts.get(ck, 0) + 1
+
         # Drop postings that have already expired before any LLM cost is spent.
-        rows = [(t[4], t[5]) for t in picked]
-        ids = [str(jid) for jid, _ in _filter_live(rows, args.limit)]
+        ids = [str(jid) for jid, _ in _filter_live(capped, args.limit)]
 
     print(",".join(ids))
 
