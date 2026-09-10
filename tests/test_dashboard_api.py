@@ -57,3 +57,59 @@ def test_events_endpoint_returns_the_full_timeline(client, add_job):
 
     tos = [e["to"] for e in client.get(f"/api/jobs/{jid}/events").json()]
     assert tos == [Status.APPLIED, Status.SCREENING, Status.INTERVIEWING]
+
+
+def test_events_interleaves_application_rows(client, add_job):
+    """The timeline shows submission attempts (applications) alongside status changes."""
+    from honestapply.db.models import Application
+    from honestapply.db.session import session_scope
+
+    jid = add_job(status=Status.APPLIED)
+    with session_scope() as s:
+        s.add(
+            Application(
+                job_id=jid, mode="real", status="applied",
+                confirmation_text="Your application was received.",
+            )
+        )
+
+    items = client.get(f"/api/jobs/{jid}/events").json()
+    kinds = {it["kind"] for it in items}
+    assert "status" in kinds and "application" in kinds
+    app = next(it for it in items if it["kind"] == "application")
+    assert app["mode"] == "real"
+    assert app["id"]  # every item is identified
+
+
+def test_add_note_appends_to_history_append_only(client, add_job):
+    """POST /events adds a same-status marker; it never edits or drops history."""
+    jid = add_job(status=Status.INTERVIEWING)
+    before = client.get(f"/api/jobs/{jid}/events").json()
+
+    resp = client.post(f"/api/jobs/{jid}/events", json={"note": "round 2 with the CTO"})
+    assert resp.status_code == 200
+
+    after = client.get(f"/api/jobs/{jid}/events").json()
+    assert len(after) == len(before) + 1
+    added = after[-1]
+    assert added["kind"] == "status"
+    # same-status marker => status is unchanged, note is preserved, dashboard-sourced
+    assert added["from"] == Status.INTERVIEWING
+    assert added["to"] == Status.INTERVIEWING
+    assert added["source"] == "dashboard"
+    assert added["note"] == "round 2 with the CTO"
+
+    # Append-only, spelled out: the job's *real* status column did not move, and
+    # every pre-existing event is byte-for-byte identical (nothing was rewritten).
+    row = next(r for r in client.get("/api/applications").json() if r["job_id"] == jid)
+    assert row["status"] == Status.INTERVIEWING
+    assert after[: len(before)] == before
+
+
+def test_add_empty_note_is_rejected(client, add_job):
+    jid = add_job(status=Status.APPLIED)
+    assert client.post(f"/api/jobs/{jid}/events", json={"note": "   "}).status_code == 400
+
+
+def test_add_note_to_unknown_job_is_404(client):
+    assert client.post("/api/jobs/999999/events", json={"note": "x"}).status_code == 404

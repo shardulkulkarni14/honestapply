@@ -166,6 +166,15 @@ table with everything**: each application is a row linking every locally-stored 
 Clickable status cards (applied / rejected / screening / …) filter the table; a search box
 covers company, role, and location.
 
+**Phase history.** Every row has a ▸ toggle that expands the job's full timeline — each
+status transition (`enriched → scored → tailored → …`) with its timestamp and source badge
+(`pipeline` / `cli` / `dashboard`), and the apply attempts interleaved in place. Add a note
+from the input at the bottom of the drawer: it appends a dashboard-sourced, same-status
+marker to the log. The history is **append-only and read-only** — timestamps and past
+transitions are never edited, so the log stays a faithful audit trail. Manual status
+changes made from the CLI (`honestapply mark <id> <status> --note … --source …`) or the
+dashboard's status dropdown are recorded the same way, attributed to whoever made them.
+
 Architecture: a FastAPI backend (`dashboard/api.py` — JSON API + local file serving) and
 an optional Next.js frontend (`dashboard/web/`). Build the frontend once with
 `cd dashboard/web && npm install && npm run build`; FastAPI serves the static export at

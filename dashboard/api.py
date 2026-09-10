@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from honestapply.config import PATHS
 from honestapply.db.events import transition
-from honestapply.db.models import Application, Job, Status
+from honestapply.db.models import Application, Job, JobEvent, Status
 from honestapply.db.session import init_db, session_scope
 
 ROOT = PATHS.root
@@ -260,21 +260,99 @@ def provenance(job_id: int) -> dict:
 
 @app.get("/api/jobs/{job_id}/events")
 def job_events(job_id: int) -> list[dict]:
-    """The status history of one job — the timeline behind a row."""
+    """The timeline behind a row: every status transition (from job_events) plus
+    every submission attempt (from applications), interleaved by time. Status
+    changes are the phases the job moved through; application rows show when a
+    real or dry-run submission actually happened."""
     with session_scope() as s:
         job = s.get(Job, job_id)
         if job is None:
             raise HTTPException(status_code=404, detail=f"no job {job_id}")
-        return [
-            {
-                "from": e.from_status,
-                "to": e.to_status,
-                "at": e.at.isoformat() if e.at else None,
-                "source": e.source,
-                "note": e.note,
-            }
-            for e in sorted(job.events, key=lambda e: e.at or e.id)
-        ]
+
+        items: list[dict] = []
+        for e in job.events:
+            items.append(
+                {
+                    "kind": "status",
+                    "id": e.id,
+                    "from": e.from_status,
+                    "to": e.to_status,
+                    "at": e.at.isoformat() if e.at else None,
+                    "source": e.source,
+                    "note": e.note,
+                }
+            )
+        for a in job.applications:
+            # Which screenshot this specific attempt actually has (a failed/dry
+            # attempt may have captured only the pre-submit one). None => no link.
+            shot_kind = (
+                "post_shot" if a.post_submit_screenshot
+                else "pre_shot" if a.pre_submit_screenshot
+                else None
+            )
+            items.append(
+                {
+                    "kind": "application",
+                    "id": a.id,
+                    "at": a.applied_at.isoformat() if a.applied_at else None,
+                    "mode": a.mode,
+                    "status": a.status,
+                    "note": (a.confirmation_text or "")[:200] or None,
+                    "shot_kind": shot_kind,
+                    "has_screenshot": shot_kind is not None,
+                }
+            )
+        # Sort by timestamp; ties break status-before-application then by id so
+        # the order is stable and deterministic. Items without a timestamp (rare)
+        # fall to the end.
+        _kind_rank = {"status": 0, "application": 1}
+        items.sort(
+            key=lambda it: (
+                it["at"] is None,
+                it["at"] or "",
+                _kind_rank.get(it["kind"], 9),
+                it["id"],
+            )
+        )
+        return items
+
+
+class EventNote(BaseModel):
+    note: str  # a note to append to the history at the current status
+
+
+@app.post("/api/jobs/{job_id}/events")
+def add_event_note(job_id: int, body: EventNote) -> dict:
+    """Append a dated note to a job's history at its current status.
+
+    The history is append-only: this adds a new entry, it never edits or deletes
+    an existing one. It records a same-status marker (from == to == current
+    status), attributed to the dashboard, so notes like an interview-round detail
+    live in the timeline instead of overwriting anything."""
+    note = (body.note or "").strip()
+    if not note:
+        raise HTTPException(status_code=400, detail="note must not be empty")
+    with session_scope() as s:
+        job = s.get(Job, job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"no job {job_id}")
+        current = job.status or ""
+        ev = JobEvent(
+            job_id=job.id,
+            from_status=current or None,
+            to_status=current,
+            source="dashboard",
+            note=note,
+        )
+        s.add(ev)
+        s.flush()
+        return {
+            "id": ev.id,
+            "job_id": job.id,
+            "to": ev.to_status,
+            "at": ev.at.isoformat() if ev.at else None,
+            "note": ev.note,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +410,25 @@ def files(job_id: int, kind: str) -> FileResponse:
     if not _exists(path):
         raise HTTPException(404, f"{kind} file missing")
     return FileResponse(path, media_type=media, content_disposition_type="inline")
+
+
+@app.get("/files/app/{application_id}/{kind}")
+def application_file(application_id: int, kind: str) -> FileResponse:
+    """A screenshot for one specific submission attempt, addressed by its own id.
+
+    The timeline links here (not to ``/files/{job_id}/..``, which always serves
+    the newest attempt) so that in a multi-application job each row opens its own
+    pre/post screenshot rather than the latest one."""
+    if kind not in ("pre_shot", "post_shot"):
+        raise HTTPException(404, "unknown kind")
+    with session_scope() as s:
+        a = s.get(Application, application_id)
+        if not a:
+            raise HTTPException(404, "application not found")
+        path = a.pre_submit_screenshot if kind == "pre_shot" else a.post_submit_screenshot
+    if not _exists(path):
+        raise HTTPException(404, f"{kind} file missing")
+    return FileResponse(path, media_type="image/png", content_disposition_type="inline")
 
 
 # ---------------------------------------------------------------------------

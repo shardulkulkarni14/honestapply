@@ -44,6 +44,9 @@ class Status:
     DRY_RUN_COMPLETED = "dry_run_completed"
     NEEDS_HUMAN = "needs_human"
     FAILED = "failed"
+    # A company already at its lifetime per-employer cap: its remaining queued
+    # roles are retired so the pipeline never re-applies to the same employer.
+    SKIPPED_COMPANY_CAP = "skipped_company_cap"
 
     # Post-apply lifecycle. These come *after* a real submission and are set by
     # the user (or an inbox sync), not the pipeline — which is why they used to
@@ -59,6 +62,7 @@ class Status:
     PIPELINE = [
         DISCOVERED, ENRICHED, SCORED, SKIPPED_LOW_FIT, TAILORED, COVERED,
         READY_TO_APPLY, APPLIED, DRY_RUN_COMPLETED, NEEDS_HUMAN, FAILED,
+        SKIPPED_COMPANY_CAP,
     ]
     # Outcomes a human (or inbox sync) records after applying.
     POST_APPLY = [SCREENING, INTERVIEWING, OFFER, REJECTED, GHOSTED]
