@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     # guards prevent that: company interleaving in the apply queue, and this
     # rolling-24h per-employer cap.
     honestapply_per_company_daily_cap: int = 2
+    # The 24h cap resets overnight, so a company can still accumulate applications
+    # day after day. This cumulative lifetime cap retires a company's remaining
+    # queued roles once it has this many real submissions in total, so the
+    # pipeline never keeps re-applying to one employer. Set to 0 to disable.
+    honestapply_per_company_total_cap: int = 2
 
     # Application conventions (CV format, salary/date formatting, salutations,
     # work-auth phrasing, account-walled ATSes). Defaults to the German market —

@@ -38,4 +38,4 @@ python scripts/verify_letters.py
 echo "--- apply ---"
 honestapply apply --no-dry-run 2>&1 | tail -40
 
-echo "=========== india run done — $(sqlite3 data/honestapply.db "select count(*) from applications where mode='real' and status='applied' and applied_at >= datetime('now','-24 hours');")/100 real in 24h ==========="
+echo "=========== india run done — $(sqlite3 data/honestapply.db "select count(*) from applications where mode='real' and status='applied' and applied_at >= datetime('now','-24 hours');")real in 24h ==========="

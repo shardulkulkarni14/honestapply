@@ -55,15 +55,26 @@ def test_extract_returns_none_for_missing_file(tmp_path):
     assert extract_pdf_text(tmp_path / "absent.pdf") is None
 
 
-def test_provenance_endpoint_on_a_tailored_job(add_job):
-    """End-to-end: tailor a job, then the endpoint attests its rendered PDF."""
+def test_provenance_endpoint_on_a_tailored_job(add_job, tmp_path, monkeypatch):
+    """End-to-end: tailor a job, then the endpoint attests its rendered PDF.
+
+    Runs entirely on the bundled example résumé in an isolated tmp data dir — never
+    the developer's real résumé, and never writing into the live data/ tree — so it
+    is deterministic and runs everywhere, not only where a real résumé exists.
+    """
+    import shutil
+
     from fastapi.testclient import TestClient
 
     import dashboard.api as api
+    from honestapply import config
     from honestapply.db.models import Status
 
-    if not RESUME.exists():
-        pytest.skip("resume YAML not present")
+    # Point resumes_dir / outputs_dir under tmp and seed the example résumé.
+    monkeypatch.setattr(config.PATHS, "root", tmp_path)
+    resumes = tmp_path / "data" / "resumes"
+    resumes.mkdir(parents=True)
+    shutil.copy(Path("config/resume.example.yaml"), resumes / "default.yaml")
 
     jid = add_job(status=Status.SCORED)
     from honestapply.stages.tailor import run_tailor

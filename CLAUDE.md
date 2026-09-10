@@ -7,7 +7,7 @@ pipeline reference and `DECISIONS.md` for why things are built the way they are.
 ## Setup & everyday commands
 
 ```bash
-python3.12 -m venv .venv && source .venv/bin/activate   # 3.12 required (WeasyPrint/macOS quirks — see DECISIONS.md)
+python3.12 -m venv .venv && source .venv/bin/activate   # 3.12 recommended; >=3.11 supported (WeasyPrint/macOS quirks — see DECISIONS.md)
 pip install -e ".[all]"
 honestapply init        # creates .env + live configs from config/*.example.*, and the DB
 honestapply doctor      # environment health check
@@ -46,8 +46,7 @@ pipeline with no API key (shells out to the user's Claude Code login).
   Keep dates inline (not floated) in templates: floats scramble ATS text-extraction order
 - `src/honestapply/ats/` — per-ATS detection + form metadata (Greenhouse/Lever/Ashby/…)
 - `scripts/` — reporting: `build_tracker.py` (markdown board from the DB),
-  `build_dashboard.py` (HTML dashboard; `HONESTAPPLY_OWNER_NAME` / `HONESTAPPLY_COWORK_XLSX`
-  env vars), `fetch_job_descriptions.py` (archive JDs before postings vanish)
+  `fetch_job_descriptions.py` (archive JDs before postings vanish)
 - `dashboard/api.py` — FastAPI review dashboard (`honestapply dashboard`); one table,
   every local artifact linked. Optional Next.js frontend in `dashboard/web/`
   (`npm install && npm run build` → static export served by FastAPI; works without it)

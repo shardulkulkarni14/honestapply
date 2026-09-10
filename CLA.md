@@ -65,12 +65,23 @@ use or incorporate Your Contribution.
 Unless required by applicable law or agreed in writing, You provide Your Contribution
 **"AS IS"**, without warranties or conditions of any kind, express or implied.
 
+## 7. Assignment
+
+The Maintainer may assign this Agreement and the licenses You grant under it to a
+successor entity — for example, a company later formed to develop, license, or host the
+Project. Your grants continue in favour of that successor. This lets the Project's
+stewardship move from an individual to a company without needing to re-collect
+agreements.
+
 ---
 
 ### How to accept
 
-Contributions are gated by an automated CLA check. When You open your first pull
-request, a bot will ask You to confirm You have read and agree to this Agreement; a
-one-time signed acknowledgement covers all your future contributions. For contributions
-made before that automation is in place, a comment on your pull request stating
-*"I have read the CLA and I agree"* records your acceptance.
+To accept, add a comment on your pull request stating
+*"I have read the CLA and I agree."* A one-time acknowledgement covers all your future
+contributions. An automated CLA check (CLA Assistant) may be added later to record this
+for you on your first pull request.
+
+---
+
+*Version 1.0 — 2026-09-10.*

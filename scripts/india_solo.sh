@@ -22,7 +22,7 @@
 #       probed, the 8 that resolved were already in employers.yaml.
 #     - Of 179 live India candidates scored in one day, 2 hit score 7, 1 hit 6,
 #       5 hit 5. Expect roughly 1-3 qualifying roles per full cycle.
-#   The 65 India applications on file accumulated over weeks. Let this run for
+#   Real India submissions accumulate slowly across runs. Let this run for
 #   hours/days; do not expect a batch of 30 in one sitting.
 set -uo pipefail
 cd "$(dirname "$0")/.."

@@ -18,10 +18,10 @@ from honestapply.db.models import Job, Status
 from honestapply.db.session import session_scope
 from honestapply.llm.base import get_provider
 from honestapply.resume.schema import list_resumes
+from honestapply.stages.cover_letter import _cover_one
 from honestapply.stages.enrich import _enrich_job
 from honestapply.stages.score import _score_one
 from honestapply.stages.tailor import _tailor_one
-from honestapply.stages.cover_letter import _cover_one
 
 
 def main() -> None:

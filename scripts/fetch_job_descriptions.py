@@ -66,7 +66,6 @@ def fetch_jd(url: str) -> str | None:
                 if j.get("jobId") == jid or j.get("id") == jid:
                     txt = j.get("descriptionPlain") or strip_html(j.get("descriptionHtml", ""))
                     loc = j.get("location", "")
-                    comp = j.get("compensation", {})
                     return f"[{j.get('title')}] · {loc}\n\n{txt}".strip()
             return None
         # ---- Greenhouse ----

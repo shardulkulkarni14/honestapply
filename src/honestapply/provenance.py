@@ -26,9 +26,14 @@ from pathlib import Path
 
 
 def _normalise(text: str) -> str:
-    """Collapse whitespace and lowercase — the same light normalisation the tailor
-    validator uses, so 'present' means the same thing in both places."""
-    return re.sub(r"\s+", " ", (text or "").strip().lower())
+    """Collapse whitespace and lowercase, and undo PDF hyphenation so a bullet the
+    renderer wrapped at a hyphenation point (e.g. 'en‐\ngagement') still matches
+    the original fact. Builds on the same light normalisation the tailor validator
+    uses, so 'present' means the same thing in both places."""
+    text = text or ""
+    text = text.replace("­", "")            # U+00AD soft hyphen (discretionary)
+    text = re.sub("‐" + r"\s+", "", text)   # U+2010 auto-hyphenation + line break
+    return re.sub(r"\s+", " ", text.strip().lower())
 
 
 def extract_pdf_text(pdf_path: str | Path) -> str | None:

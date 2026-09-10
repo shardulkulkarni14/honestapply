@@ -75,3 +75,21 @@ htmlcov/
 dashboard/web/node_modules/
 dashboard/web/.next/
 dashboard/web/out/
+
+# --- Additional privacy hardening (pre-launch audit) ---------------------------
+# Form/accessibility snapshots saved as markdown (not just *.yml)
+*-form-*.md
+# Personal ops scripts and local runbooks
+scripts/backup_local_state.sh
+# Logs anywhere
+logs/
+*.log
+# Root-level exports that can carry filled-in personal data
+/*.html
+/*.json
+/*.txt
+# Local editor/agent settings that may carry absolute paths
+.claude/settings.json
+# Screenshots for docs are the exception to the global image ignore
+!docs/**/*.png
+!docs/**/*.gif

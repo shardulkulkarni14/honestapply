@@ -45,8 +45,12 @@ def test_a_lower_cap_is_still_respected():
 
 
 def test_published_safety_defaults():
-    """The numbers quoted in the README's safety table."""
-    s = Settings()
+    """The numbers quoted in the README's safety table.
+
+    Read the in-code defaults, not a developer's local `.env` (which may lower
+    the cap for their own runs) — this test pins what ships, not what's tuned.
+    """
+    s = Settings(_env_file=None)
     assert s.honestapply_daily_cap == 25
     assert s.honestapply_dry_run_first_n == 3
     assert s.honestapply_rate_limit_seconds == 90

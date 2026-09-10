@@ -7,7 +7,7 @@ application. Everything runs on your own machine: your résumé never reaches a 
 and submissions come from your own browser and your own connection.
 
 ```bash
-honestapply simulate   # full pipeline, offline, no API key, no browser — see it work first
+honestapply init && honestapply simulate   # full pipeline, offline, no API key, no browser — see it work first
 ```
 
 ## Why this one is different
@@ -19,7 +19,10 @@ retries once and then routes the job to a human. No model sits in that verificat
 so "add a PhD" fails closed even if the model complies. Language claims get the same
 treatment: if your profile says German is A2, no letter will call you fluent.
 
-**2. The safety limits are constants in the code, not settings to upsell.**
+**2. Safety-first by default, with a hard ceiling you can't override.** The first
+submissions of every run are dry, same-domain submits are spaced out, and a conservative
+daily cap applies — all sensible defaults. The one true constant is the hard daily ceiling
+(`HARD_DAILY_CEILING`), which no config or environment variable can raise.
 
 | Guard | Value |
 |---|---|
@@ -158,13 +161,10 @@ table with everything**: each application is a row linking every locally-stored 
 - **posting ↗** — the original job URL
 - **JD** — the archived job description (survives the posting being taken down)
 - **resume / cover** — the exact tailored PDFs that were submitted, opened inline
-- **answers** — the form answers actually typed into that application
-  (from `data/application_archive/answers_*.md`, fuzzy-matched by company)
 - **shot** — pre/post-submit confirmation screenshots
 
 Clickable status cards (applied / rejected / screening / …) filter the table; a search box
-covers company, role, and location. Statuses from `data/active_pipeline.json` (interviews,
-screenings) override the DB status per company, with the next action shown in the row.
+covers company, role, and location.
 
 Architecture: a FastAPI backend (`dashboard/api.py` — JSON API + local file serving) and
 an optional Next.js frontend (`dashboard/web/`). Build the frontend once with
@@ -180,11 +180,7 @@ durable record of the search:
 | Script | Output | What it does |
 |--------|--------|--------------|
 | `python scripts/build_tracker.py` | `data/application_tracker.md` | Markdown board of every prepared/submitted/rejected application (fit score, status, apply link, login-required flag). Source of truth is the DB; re-run after every submission. |
-| `python scripts/build_dashboard.py` | `data/dashboard.html` | One consolidated HTML dashboard merging the honestapply DB with any external Excel tracker — applications, rejections/skips, screening answers, interview prep in one place. |
 | `python scripts/fetch_job_descriptions.py` | `data/application_archive/jd/` | Archives the verbatim JD for every application (Ashby/Greenhouse/Lever JSON APIs, Personio pages) so it survives the posting being taken down. |
-
-`data/application_archive/` also keeps dated logs of the exact screening answers
-submitted per application, for interview prep and consistency across re-applications.
 
 The resume renderer is ATS-hardened from real screenings: inline (non-floated) dates so
 PDF text-extraction order stays correct, clean clickable contact links that never break
@@ -210,9 +206,12 @@ These are asserted by tests, so weakening one fails the build rather than passin
 
 ## Limitations (honest)
 
-- **Job-board automation is gray-area.** Many boards' ToS restrict automated submission;
-  LinkedIn especially carries ban risk (hence it's disabled by default). You are
-  responsible for how you use this. The defaults err toward caution.
+- **Job-board automation is gray-area — on both discovery and submission.** Scraping
+  search results (the JobSpy sources, LinkedIn search included) and automated submission
+  both run against many boards' ToS; LinkedIn especially carries ban risk (hence Easy Apply
+  is disabled by default). You are responsible for how you use this. The defaults err toward
+  caution, and the company board APIs (Greenhouse/Lever/Ashby) are the recommended,
+  ToS-clean primary source.
 - **JobSpy scrapers are flaky** and often blocked from servers/datacenter IPs. Company
   board APIs (Greenhouse/Lever/Ashby) are reliable and are the recommended primary source.
 - **The apply stage needs Playwright MCP + a logged-in browser** for portals that require
@@ -234,8 +233,10 @@ These are asserted by tests, so weakening one fails the build rather than passin
 
 ## License & commercial use
 
-honestapply is free and open source under **[AGPL-3.0](LICENSE)**. Run it on your own
-machine or self-host it for your team at no cost.
+Copyright © 2026 Shardul Kulkarni.
+
+honestapply is free and open source under **[AGPL-3.0-or-later](LICENSE)**. Run it on your
+own machine or self-host it for your team at no cost.
 
 If you want to **embed it in a closed-source product**, **offer a modified version as a
 hosted service without releasing your source**, or you'd rather **use a fully managed

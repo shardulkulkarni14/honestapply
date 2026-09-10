@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/shardulkulkarni14/honestapply/security/advisories/new
+    about: Please report security issues privately, not as a public issue (see SECURITY.md).
+  - name: Commercial license / managed hosting
+    url: https://github.com/shardulkulkarni14/honestapply/blob/main/COMMERCIAL.md
+    about: For a commercial license or hosted edition, see COMMERCIAL.md or email shardul.ask@gmail.com.

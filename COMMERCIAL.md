@@ -1,6 +1,6 @@
 # Commercial licensing & managed hosting
 
-**honestapply is free and open source under [AGPL-3.0](LICENSE).** For most people —
+**honestapply is free and open source under [AGPL-3.0-or-later](LICENSE).** For most people —
 individuals running it on their own machine, or teams self-hosting it internally — the
 AGPL is all you need, at no cost.
 
