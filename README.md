@@ -231,4 +231,21 @@ These are asserted by tests, so weakening one fails the build rather than passin
 
 - [SECURITY.md](SECURITY.md) — threat model, prompt injection, what this doesn't defend against
 - [DECISIONS.md](DECISIONS.md) — why things are built the way they are
-- Licensed [AGPL-3.0](LICENSE).
+
+## License & commercial use
+
+honestapply is free and open source under **[AGPL-3.0](LICENSE)**. Run it on your own
+machine or self-host it for your team at no cost.
+
+If you want to **embed it in a closed-source product**, **offer a modified version as a
+hosted service without releasing your source**, or you'd rather **use a fully managed
+edition** and not run anything yourself, a commercial license and managed hosting are
+available — see **[COMMERCIAL.md](COMMERCIAL.md)** or email
+[shardul.ask@gmail.com](mailto:shardul.ask@gmail.com).
+
+## Contributing
+
+Contributions are welcome. Because honestapply is dual-licensed (open source **and**
+commercial), contributors sign a lightweight **[Contributor License Agreement](CLA.md)**
+so the project can keep offering both — you keep ownership of your work, and the project
+keeps the right to include it in the commercial edition.
