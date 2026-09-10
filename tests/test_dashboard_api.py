@@ -99,6 +99,12 @@ def test_add_note_appends_to_history_append_only(client, add_job):
     assert added["source"] == "dashboard"
     assert added["note"] == "round 2 with the CTO"
 
+    # Append-only, spelled out: the job's *real* status column did not move, and
+    # every pre-existing event is byte-for-byte identical (nothing was rewritten).
+    row = next(r for r in client.get("/api/applications").json() if r["job_id"] == jid)
+    assert row["status"] == Status.INTERVIEWING
+    assert after[: len(before)] == before
+
 
 def test_add_empty_note_is_rejected(client, add_job):
     jid = add_job(status=Status.APPLIED)

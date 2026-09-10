@@ -220,7 +220,7 @@ def mark(
     event log.
     """
     from honestapply.db.events import transition
-    from honestapply.db.models import Job, Status
+    from honestapply.db.models import Job, JobEvent, Status
     from honestapply.db.session import session_scope
 
     if new_status not in Status.ALL:
@@ -232,8 +232,30 @@ def mark(
             if not job:
                 console.print(f"[red]No job {job_id}.[/red]")
                 raise typer.Exit(1)
-            job.status = new_status
-            console.print(f"[green]Job {job_id} → {new_status}[/green]")
+            old = job.status
+            if old == new_status:
+                # No status change, so the before_flush listener records nothing.
+                # A note here would be silently lost — instead append an explicit
+                # same-status marker (mirroring the dashboard note endpoint) so it
+                # still lands in the history; with no note, it's just a no-op.
+                if note:
+                    s.add(
+                        JobEvent(
+                            job_id=job.id,
+                            from_status=old,
+                            to_status=new_status,
+                            source=source,
+                            note=note,
+                        )
+                    )
+                    console.print(f"[green]Job {job_id}: note added at {new_status}[/green]")
+                else:
+                    console.print(
+                        f"[yellow]Job {job_id} already {new_status}; nothing changed.[/yellow]"
+                    )
+            else:
+                job.status = new_status
+                console.print(f"[green]Job {job_id} → {new_status}[/green]")
 
 
 # ---------------------------------------------------------------------------

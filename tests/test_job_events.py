@@ -83,3 +83,43 @@ def test_source_defaults_back_to_pipeline_after_context(add_job):
 
     sources = [e.source for e in _events(jid)]
     assert sources[-2:] == ["dashboard", "pipeline"]
+
+
+def test_mark_at_the_same_status_still_records_a_note(add_job):
+    """`mark <id> <same-status> --note ...` must not silently drop the note: the
+    status doesn't change so the listener writes nothing, so mark appends an
+    explicit same-status marker instead (mirroring the dashboard note endpoint)."""
+    from typer.testing import CliRunner
+
+    from honestapply.cli import app
+
+    jid = add_job(status=Status.INTERVIEWING)
+    before = _events(jid)
+
+    res = CliRunner().invoke(
+        app, ["mark", str(jid), Status.INTERVIEWING, "--note", "round 2 booked"]
+    )
+    assert res.exit_code == 0
+
+    after = _events(jid)
+    assert len(after) == len(before) + 1
+    marker = after[-1]
+    assert marker.from_status == Status.INTERVIEWING
+    assert marker.to_status == Status.INTERVIEWING
+    assert marker.source == "cli"
+    assert marker.note == "round 2 booked"
+    # The job's real status is untouched.
+    with session_scope() as s:
+        assert s.get(Job, jid).status == Status.INTERVIEWING
+
+
+def test_mark_at_the_same_status_with_no_note_is_a_noop(add_job):
+    from typer.testing import CliRunner
+
+    from honestapply.cli import app
+
+    jid = add_job(status=Status.APPLIED)
+    before = _events(jid)
+    res = CliRunner().invoke(app, ["mark", str(jid), Status.APPLIED])
+    assert res.exit_code == 0
+    assert len(_events(jid)) == len(before)  # nothing recorded
