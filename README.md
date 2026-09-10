@@ -10,8 +10,6 @@ and submissions come from your own browser and your own connection.
 honestapply init && honestapply simulate   # full pipeline, offline, no API key, no browser — see it work first
 ```
 
-![The honestapply review dashboard: every application in one table, each artifact (posting, JD, tailored résumé and cover letter, screenshots) linked. Shown on the offline `simulate` demo data.](docs/dashboard.png)
-
 ## Why this one is different
 
 **1. It can't fabricate. That's enforced, not requested.**
