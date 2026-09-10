@@ -88,6 +88,43 @@
   tbody tr:last-child td{border-bottom:none}
   tbody tr{transition:background .12s}
   tbody tr:hover{background:rgba(255,255,255,.018)}
+
+  /* --- per-job phase history (timeline) --- */
+  .hbtn{background:none;border:none;color:var(--muted,#8a8f98);cursor:pointer;font-size:12px;
+        padding:0 6px 0 0;line-height:1;transition:color .12s}
+  .hbtn:hover{color:var(--fg,#e6e6e6)}
+  tr.history-row:hover{background:none}
+  .history-cell{background:rgba(255,255,255,.02);padding:14px 18px 16px 40px !important;border-bottom:1px solid var(--line) !important}
+  .history-body{max-width:900px}
+  .hloading{color:var(--muted,#8a8f98);font-size:12.5px}
+  .hreason{font-size:12.5px;color:var(--fg,#cfd2d6);margin-bottom:8px}
+  .hreason .hlbl{color:var(--muted,#8a8f98);text-transform:uppercase;font-size:10px;letter-spacing:.05em;margin-right:6px}
+  .hpartial{font-size:11.5px;color:var(--muted,#8a8f98);font-style:italic;margin-bottom:8px}
+  .hlist{list-style:none;margin:0;padding:0;border-left:1px solid var(--line);margin-left:4px}
+  .hitem{position:relative;padding:5px 0 5px 16px;font-size:12.5px;line-height:1.5}
+  .hdot{position:absolute;left:-4px;top:11px;width:7px;height:7px;border-radius:50%;
+        background:var(--muted,#8a8f98);box-shadow:0 0 0 3px var(--bg,#0c0d10)}
+  .hdot.app{background:var(--accent,#6ea8fe)}
+  .hwhen{color:var(--muted,#8a8f98);font-variant-numeric:tabular-nums;margin-right:10px;font-size:11.5px}
+  .hmain{color:var(--fg,#e6e6e6)}
+  .hlist .pill{display:inline-block;padding:1px 7px;border-radius:10px;background:rgba(255,255,255,.06);
+        font-size:11px;text-transform:capitalize}
+  .harrow{margin:0 5px;color:var(--muted,#8a8f98)}
+  .hsrc{margin-left:8px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#8a8f98);
+        border:1px solid var(--line);border-radius:4px;padding:0 5px}
+  .hann{margin-left:8px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#8a8f98)}
+  .hbadge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px}
+  .hbadge.real{background:rgba(110,168,254,.18);color:#a9c8ff}
+  .hbadge.dry{background:rgba(255,255,255,.06);color:var(--muted,#8a8f98)}
+  .hstat{color:var(--muted,#9aa0a8);text-transform:capitalize}
+  .hnote{display:block;color:var(--fg,#c7cad0);margin-top:2px;font-size:12px}
+  .haddnote{display:flex;gap:8px;margin-top:12px}
+  .hnote-in{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:6px;
+        color:var(--fg,#e6e6e6);padding:6px 9px;font-size:12.5px;font-family:inherit}
+  .hnote-in:focus{outline:none;border-color:var(--accent,#6ea8fe)}
+  .hadd{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:6px;
+        color:var(--fg,#e6e6e6);padding:6px 12px;font-size:12.5px;cursor:pointer}
+  .hadd:hover{background:rgba(255,255,255,.1)}
   td.company{font-weight:600; word-break:break-word}
   td.role{color:#d4d9e4; word-break:break-word}
   td.loc{color:var(--muted); font-size:12.5px; word-break:break-word}
@@ -227,7 +264,11 @@ function renderUpcoming(){
 }
 
 function statusSelect(r){
-  const opts = STATUSES.map(s=>`<option value="${s}" ${s===r.status?'selected':''}>${s.replace('_',' ')}</option>`).join('');
+  // Show the job's actual status even if it's a pipeline-internal one that isn't
+  // in the manually-settable list (e.g. discovered, skipped_company_cap), so the
+  // row never silently mislabels itself as the first option.
+  const list = STATUSES.includes(r.status) || !r.status ? STATUSES : [r.status, ...STATUSES];
+  const opts = list.map(s=>`<option value="${s}" ${s===r.status?'selected':''}>${s.replace(/_/g,' ')}</option>`).join('');
   return `<select class="status-sel" style="background-color:${COLOR(r.status)}"
             data-id="${r.job_id}" onchange="setStatus(this)">${opts}</select>`;
 }
@@ -284,8 +325,8 @@ function renderRows(){
   const tb=document.getElementById('rows');
   if(!rows.length){ tb.innerHTML='<tr><td colspan="8" class="empty">no matches</td></tr>'; return; }
   tb.innerHTML = rows.map(r=>`
-    <tr>
-      <td class="company">${esc(r.company)}</td>
+    <tr data-jobrow="${r.job_id}">
+      <td class="company"><button class="hbtn" onclick="toggleHistory(${r.job_id}, this)" aria-expanded="false" title="Show phase history">▸</button>${esc(r.company)}</td>
       <td class="role">${esc(r.title)}</td>
       <td class="loc">${esc(r.location)||'—'}</td>
       <td>${statusCell(r)}</td>
@@ -298,6 +339,90 @@ function renderRows(){
 }
 
 function esc(s){ return (s??'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// --- Per-job phase history (timeline) --------------------------------------
+// Expands a row into its job_events (status transitions) interleaved with its
+// application rows (submissions), so you can see which phases a job moved
+// through and when. Append-only: you can add a note, never edit/delete history.
+async function toggleHistory(jobId, btn){
+  const tr = btn.closest('tr');
+  const next = tr.nextElementSibling;
+  if(next && next.classList.contains('history-row')){
+    next.remove(); btn.textContent='▸'; btn.setAttribute('aria-expanded','false'); return;
+  }
+  btn.textContent='▾'; btn.setAttribute('aria-expanded','true');
+  const detail = document.createElement('tr');
+  detail.className='history-row';
+  detail.innerHTML = `<td colspan="8" class="history-cell"><div class="history-body"><div class="hloading">loading history…</div></div></td>`;
+  tr.after(detail);
+  await loadHistory(jobId, detail.querySelector('.history-body'));
+}
+
+async function loadHistory(jobId, box){
+  const row = DATA.find(r=>r.job_id===jobId) || {};
+  try{
+    const items = await fetch('/api/jobs/'+jobId+'/events').then(r=>r.json());
+    box.innerHTML = renderTimeline(jobId, items, row);
+  }catch(e){ box.innerHTML='<div class="hloading">failed to load history</div>'; }
+}
+
+function fmtLocal(iso){
+  if(!iso) return '';
+  // Stored timestamps are naive UTC; append Z so the browser converts to local.
+  const d = new Date(/[zZ]|[+\-]\d\d:?\d\d$/.test(iso) ? iso : iso+'Z');
+  return isNaN(d) ? esc(iso) : d.toLocaleString([], {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+function renderTimeline(jobId, items, row){
+  let head='';
+  if(row.status_reason) head += `<div class="hreason"><span class="hlbl">status reason</span> ${esc(row.status_reason)}</div>`;
+  const firstStatus = items.find(it=>it.kind==='status');
+  if(!items.length || (firstStatus && firstStatus.from)){
+    const from = firstStatus && firstStatus.at ? fmtLocal(firstStatus.at) : null;
+    head += `<div class="hpartial">${from? 'history recorded from '+from+' — earlier transitions predate the log' : 'no history recorded for this job yet'}</div>`;
+  }
+  const list = items.map(it=>{
+    const when = `<span class="hwhen">${fmtLocal(it.at)}</span>`;
+    if(it.kind==='application'){
+      const mode = it.mode==='real'
+        ? '<span class="hbadge real">real submission</span>'
+        : `<span class="hbadge dry">${esc(it.mode||'dry run')}</span>`;
+      const shot = it.has_screenshot ? ' '+link('/files/'+jobId+'/post_shot','shot') : '';
+      return `<li class="hitem"><span class="hdot app"></span>${when}<span class="hmain">${mode}${it.status?` <span class="hstat">${esc(it.status)}</span>`:''}${shot}${it.note?`<span class="hnote">${esc(it.note)}</span>`:''}</span></li>`;
+    }
+    const toPill = `<span class="pill">${esc((it.to||'').replace(/_/g,' '))}</span>`;
+    let trans;
+    if(it.from === it.to){                       // same-status marker: a note on the timeline
+      trans = `${toPill}<span class="hann">note</span>`;
+    }else if(it.from){                            // a real transition
+      trans = `<span class="pill">${esc((it.from||'').replace(/_/g,' '))}</span><span class="harrow">→</span>${toPill}`;
+    }else{                                        // initial state (no prior status)
+      trans = toPill;
+    }
+    const src = `<span class="hsrc">${esc(it.source||'')}</span>`;
+    return `<li class="hitem"><span class="hdot"></span>${when}<span class="hmain">${trans} ${src}${it.note?`<span class="hnote">${esc(it.note)}</span>`:''}</span></li>`;
+  }).join('');
+  return `${head}<ul class="hlist">${list||'<li class="hitem"><span class="hmain">no events</span></li>'}</ul>
+    <div class="haddnote">
+      <input class="hnote-in" type="text" placeholder="add a note to the history…"
+        onkeydown="if(event.key==='Enter')addHistoryNote(${jobId}, this)">
+      <button class="hadd" onclick="addHistoryNote(${jobId}, this.previousElementSibling)">Add note</button>
+    </div>`;
+}
+
+async function addHistoryNote(jobId, input){
+  const note = (input.value||'').trim();
+  if(!note) return;
+  try{
+    const res = await fetch('/api/jobs/'+jobId+'/events', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({note})
+    });
+    if(!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    input.value='';
+    await loadHistory(jobId, input.closest('.history-body'));
+    toast('note added to history');
+  }catch(e){ toast('Failed: '+e.message, true); }
+}
 
 async function load(){
   try{

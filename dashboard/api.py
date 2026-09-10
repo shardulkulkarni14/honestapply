@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from honestapply.config import PATHS
 from honestapply.db.events import transition
-from honestapply.db.models import Application, Job, Status
+from honestapply.db.models import Application, Job, JobEvent, Status
 from honestapply.db.session import init_db, session_scope
 
 ROOT = PATHS.root
@@ -260,21 +260,81 @@ def provenance(job_id: int) -> dict:
 
 @app.get("/api/jobs/{job_id}/events")
 def job_events(job_id: int) -> list[dict]:
-    """The status history of one job — the timeline behind a row."""
+    """The timeline behind a row: every status transition (from job_events) plus
+    every submission attempt (from applications), interleaved by time. Status
+    changes are the phases the job moved through; application rows show when a
+    real or dry-run submission actually happened."""
     with session_scope() as s:
         job = s.get(Job, job_id)
         if job is None:
             raise HTTPException(status_code=404, detail=f"no job {job_id}")
-        return [
-            {
-                "from": e.from_status,
-                "to": e.to_status,
-                "at": e.at.isoformat() if e.at else None,
-                "source": e.source,
-                "note": e.note,
-            }
-            for e in sorted(job.events, key=lambda e: e.at or e.id)
-        ]
+
+        items: list[dict] = []
+        for e in job.events:
+            items.append(
+                {
+                    "kind": "status",
+                    "id": e.id,
+                    "from": e.from_status,
+                    "to": e.to_status,
+                    "at": e.at.isoformat() if e.at else None,
+                    "source": e.source,
+                    "note": e.note,
+                }
+            )
+        for a in job.applications:
+            items.append(
+                {
+                    "kind": "application",
+                    "id": a.id,
+                    "at": a.applied_at.isoformat() if a.applied_at else None,
+                    "mode": a.mode,
+                    "status": a.status,
+                    "note": (a.confirmation_text or "")[:200] or None,
+                    "has_screenshot": bool(a.post_submit_screenshot or a.pre_submit_screenshot),
+                }
+            )
+        # Sort by timestamp; items without one (rare) fall to the end, stable.
+        items.sort(key=lambda it: (it["at"] is None, it["at"] or "", it["id"]))
+        return items
+
+
+class EventNote(BaseModel):
+    note: str  # a note to append to the history at the current status
+
+
+@app.post("/api/jobs/{job_id}/events")
+def add_event_note(job_id: int, body: EventNote) -> dict:
+    """Append a dated note to a job's history at its current status.
+
+    The history is append-only: this adds a new entry, it never edits or deletes
+    an existing one. It records a same-status marker (from == to == current
+    status), attributed to the dashboard, so notes like an interview-round detail
+    live in the timeline instead of overwriting anything."""
+    note = (body.note or "").strip()
+    if not note:
+        raise HTTPException(status_code=400, detail="note must not be empty")
+    with session_scope() as s:
+        job = s.get(Job, job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"no job {job_id}")
+        current = job.status or ""
+        ev = JobEvent(
+            job_id=job.id,
+            from_status=current or None,
+            to_status=current,
+            source="dashboard",
+            note=note,
+        )
+        s.add(ev)
+        s.flush()
+        return {
+            "id": ev.id,
+            "job_id": job.id,
+            "to": ev.to_status,
+            "at": ev.at.isoformat() if ev.at else None,
+            "note": ev.note,
+        }
 
 
 # ---------------------------------------------------------------------------
