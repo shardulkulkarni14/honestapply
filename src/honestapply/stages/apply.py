@@ -509,7 +509,7 @@ def _process_job(
             print(f"  RETIRE (company lifetime cap {total_cap} reached): {job.company}")
             jrow = s.get(Job, job.id)
             if jrow is not None:
-                jrow.status = "skipped_company_cap"
+                jrow.status = Status.SKIPPED_COMPANY_CAP
                 jrow.status_reason = (
                     f"Retired: employer already has {total_cap}+ submitted "
                     f"applications (lifetime cap), not re-applying to avoid spam."

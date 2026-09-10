@@ -387,7 +387,7 @@ function renderTimeline(jobId, items, row){
       const mode = it.mode==='real'
         ? '<span class="hbadge real">real submission</span>'
         : `<span class="hbadge dry">${esc(it.mode||'dry run')}</span>`;
-      const shot = it.has_screenshot ? ' '+link('/files/'+jobId+'/post_shot','shot') : '';
+      const shot = it.shot_kind ? ' '+link('/files/app/'+it.id+'/'+it.shot_kind,'shot') : '';
       return `<li class="hitem"><span class="hdot app"></span>${when}<span class="hmain">${mode}${it.status?` <span class="hstat">${esc(it.status)}</span>`:''}${shot}${it.note?`<span class="hnote">${esc(it.note)}</span>`:''}</span></li>`;
     }
     const toPill = `<span class="pill">${esc((it.to||'').replace(/_/g,' '))}</span>`;

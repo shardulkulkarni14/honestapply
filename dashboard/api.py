@@ -283,6 +283,13 @@ def job_events(job_id: int) -> list[dict]:
                 }
             )
         for a in job.applications:
+            # Which screenshot this specific attempt actually has (a failed/dry
+            # attempt may have captured only the pre-submit one). None => no link.
+            shot_kind = (
+                "post_shot" if a.post_submit_screenshot
+                else "pre_shot" if a.pre_submit_screenshot
+                else None
+            )
             items.append(
                 {
                     "kind": "application",
@@ -291,11 +298,22 @@ def job_events(job_id: int) -> list[dict]:
                     "mode": a.mode,
                     "status": a.status,
                     "note": (a.confirmation_text or "")[:200] or None,
-                    "has_screenshot": bool(a.post_submit_screenshot or a.pre_submit_screenshot),
+                    "shot_kind": shot_kind,
+                    "has_screenshot": shot_kind is not None,
                 }
             )
-        # Sort by timestamp; items without one (rare) fall to the end, stable.
-        items.sort(key=lambda it: (it["at"] is None, it["at"] or "", it["id"]))
+        # Sort by timestamp; ties break status-before-application then by id so
+        # the order is stable and deterministic. Items without a timestamp (rare)
+        # fall to the end.
+        _kind_rank = {"status": 0, "application": 1}
+        items.sort(
+            key=lambda it: (
+                it["at"] is None,
+                it["at"] or "",
+                _kind_rank.get(it["kind"], 9),
+                it["id"],
+            )
+        )
         return items
 
 
@@ -392,6 +410,25 @@ def files(job_id: int, kind: str) -> FileResponse:
     if not _exists(path):
         raise HTTPException(404, f"{kind} file missing")
     return FileResponse(path, media_type=media, content_disposition_type="inline")
+
+
+@app.get("/files/app/{application_id}/{kind}")
+def application_file(application_id: int, kind: str) -> FileResponse:
+    """A screenshot for one specific submission attempt, addressed by its own id.
+
+    The timeline links here (not to ``/files/{job_id}/..``, which always serves
+    the newest attempt) so that in a multi-application job each row opens its own
+    pre/post screenshot rather than the latest one."""
+    if kind not in ("pre_shot", "post_shot"):
+        raise HTTPException(404, "unknown kind")
+    with session_scope() as s:
+        a = s.get(Application, application_id)
+        if not a:
+            raise HTTPException(404, "application not found")
+        path = a.pre_submit_screenshot if kind == "pre_shot" else a.post_submit_screenshot
+    if not _exists(path):
+        raise HTTPException(404, f"{kind} file missing")
+    return FileResponse(path, media_type="image/png", content_disposition_type="inline")
 
 
 # ---------------------------------------------------------------------------
