@@ -13,6 +13,10 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
+# Jobs prepared concurrently by batch_drive (0 = HONESTAPPLY_PREPARE_WORKERS
+# from .env, which ships at 1; 3 is the recommended value).
+PREPARE_WORKERS=${PREPARE_WORKERS:-0}
+
 DE_TARGET=${DE_TARGET:-12}     # Germany + rest of Europe
 IN_TARGET=${IN_TARGET:-15}     # India (Hyderabad first, then remote-into-India)
 POOL_FACTOR=${POOL_FACTOR:-12}
@@ -53,7 +57,7 @@ while true; do
     local ids
     ids=$(python scripts/pick_candidates.py --country "$country" --limit $((target * POOL_FACTOR)) 2>/dev/null)
     if [ -z "$ids" ]; then echo "no eligible ${country} candidates" > "$log"; return; fi
-    python scripts/batch_drive.py --ids "$ids" --target "$target" > "$log" 2>&1
+    python scripts/batch_drive.py --ids "$ids" --target "$target" --workers "$PREPARE_WORKERS" > "$log" 2>&1
   }
   prepare EU "$DE_TARGET" data/logs/prepare_eu.log &
   P1=$!

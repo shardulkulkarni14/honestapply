@@ -14,12 +14,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from honestapply.config import get_settings, load_profile
+from sqlalchemy import select
+
+from honestapply.config import Settings, get_settings, load_profile
 from honestapply.db.models import Job, Status
 from honestapply.db.session import session_scope
-from honestapply.llm.base import LLMError, get_provider
+from honestapply.llm.base import LLMProvider, get_provider
 from honestapply.llm.untrusted import fence
 from honestapply.logging_setup import get_logger
+from honestapply.stages._workers import run_pool, run_stage_on_job
 
 logger = get_logger(__name__)
 
@@ -32,49 +35,68 @@ def _load_prompt(name: str, **kwargs) -> str:
     return template.format(**kwargs)
 
 
+def get_score_provider(settings: Settings | None = None) -> LLMProvider:
+    """The provider for scoring: ``HONESTAPPLY_SCORE_PROVIDER`` if set (e.g. score
+    over the API while tailor/cover keep the key-free CLI), else the default."""
+    settings = settings or get_settings()
+    return get_provider(settings, provider=settings.honestapply_score_provider or None)
+
+
+def score_job(
+    jid: int,
+    *,
+    provider: LLMProvider,
+    profile_summary: str,
+    threshold: int,
+    mark_failed: bool = True,
+) -> str | None:
+    """Score one ENRICHED job in its own transaction; returns the resulting
+    status (scored / skipped_low_fit / failed), or None if it wasn't ENRICHED."""
+
+    def work(job: Job) -> None:
+        _score_one(job, provider, profile_summary, threshold)
+        logger.info(
+            "score: job %d [%s @ %s] -> score=%s status=%s",
+            job.id, job.title, job.company, job.score, job.status,
+        )
+
+    return run_stage_on_job(
+        jid, stage="score", expects=Status.ENRICHED, work=work, mark_failed=mark_failed
+    )
+
+
 def run_score(min_score: int | None = None, limit: int | None = None,
-              ids: list[int] | None = None) -> int:
-    """Score ENRICHED jobs. Returns count of jobs processed.
+              ids: list[int] | None = None, workers: int | None = None) -> int:
+    """Score ENRICHED jobs. Returns count of jobs processed (scored + skipped).
 
     *limit* caps how many are scored in one call and *ids* restricts to a curated
     subset — together these keep an expensive LLM stage from draining the whole
-    ENRICHED backlog in a single run.
+    ENRICHED backlog in a single run. *workers* jobs are scored at once (default
+    ``HONESTAPPLY_PREPARE_WORKERS``); each commits in its own transaction.
     """
     settings = get_settings()
     threshold = min_score if min_score is not None else settings.honestapply_min_score
-    provider = get_provider(settings)
-    profile = load_profile()
-    profile_summary = profile.summary_for_scoring()
-
-    processed = 0
+    provider = get_score_provider(settings)
+    profile_summary = load_profile().summary_for_scoring()
 
     with session_scope() as session:
-        query = session.query(Job).filter(Job.status == Status.ENRICHED)
+        query = select(Job.id).where(Job.status == Status.ENRICHED).order_by(Job.id)
         if ids:
-            query = query.filter(Job.id.in_(ids))
+            query = query.where(Job.id.in_(ids))
         if limit:
             query = query.limit(limit)
-        jobs = query.all()
-        logger.info("score: found %d ENRICHED jobs to score", len(jobs))
+        job_ids = list(session.execute(query).scalars())
+    logger.info("score: found %d ENRICHED jobs to score", len(job_ids))
 
-        for job in jobs:
-            try:
-                _score_one(job, provider, profile_summary, threshold)
-                processed += 1
-                logger.info(
-                    "score: job %d [%s @ %s] -> score=%s status=%s",
-                    job.id, job.title, job.company, job.score, job.status,
-                )
-            except LLMError as exc:
-                logger.error("score: job %d LLM error: %s", job.id, exc)
-                job.status = Status.FAILED
-                job.status_reason = str(exc)
-            except Exception as exc:
-                logger.exception("score: job %d unexpected error: %s", job.id, exc)
-                job.status = Status.FAILED
-                job.status_reason = str(exc)
-
-    return processed
+    results = run_pool(
+        lambda jid: score_job(
+            jid, provider=provider, profile_summary=profile_summary, threshold=threshold
+        ),
+        job_ids,
+        workers,
+        label="score",
+    )
+    return sum(1 for r in results if r in (Status.SCORED, Status.SKIPPED_LOW_FIT))
 
 
 def _score_one(job: Job, provider, profile_summary: str, threshold: int) -> None:

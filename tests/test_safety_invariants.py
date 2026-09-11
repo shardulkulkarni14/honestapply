@@ -79,3 +79,16 @@ def test_linkedin_easy_apply_needs_two_explicit_optins():
     src = inspect.getsource(apply_stage)
     assert "enable_linkedin_easy_apply" in src
     assert "I-UNDERSTAND-LINKEDIN-BAN-RISK" in src
+
+
+def test_apply_is_never_parallel():
+    """The prepare stages may run on a thread pool; apply may not. The rate
+    limit and the dry-run canary are tracked in-process, and the browser
+    profile is shared — a second concurrent apply would defeat all three."""
+    from honestapply.stages import apply as apply_stage
+
+    assert not hasattr(apply_stage, "workers")
+    assert "workers" not in inspect.signature(apply_stage.run_apply).parameters
+    src = inspect.getsource(apply_stage)
+    assert "ThreadPoolExecutor" not in src
+    assert "stages.prepare" not in src and "_workers" not in src

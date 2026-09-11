@@ -85,6 +85,24 @@ class Settings(BaseSettings):
     # the beachhead — and is overridable; "en" gives neutral international.
     honestapply_market: str = "de-DE"
 
+    # --- Prepare-pipeline concurrency (enrich / score / tailor / cover) -------
+    # How many jobs the prepare stages work on at once. The stages are bound by
+    # the LLM round-trip (`claude -p` spawns a process per call and takes
+    # 10-60s), so a small thread pool overlaps those waits. Each job still runs
+    # its stages in order and commits per stage; the DB is the queue and a
+    # per-stage compare-and-set keeps two workers from doing the same work.
+    # Ships at 1 — identical to the serial behaviour — so nothing changes until
+    # you raise it. 3 is the recommended value: enough to hide the LLM latency
+    # without running into Claude Code's own usage limits. The apply stage is
+    # never parallel (rate limits and the browser profile are per-process).
+    honestapply_prepare_workers: int = 1
+    # Score-only provider override (e.g. "anthropic" to score over the API while
+    # tailor/cover keep using claude_cli). None = use `llm_provider` everywhere.
+    honestapply_score_provider: str | None = None
+    # When a worker hits an LLM usage/rate limit, every worker pauses this long
+    # before its next LLM call instead of burning the remaining candidates.
+    honestapply_llm_pause_seconds: int = 120
+
     # --- Derived helpers ---
     @property
     def effective_daily_cap(self) -> int:
@@ -251,17 +269,146 @@ class Profile(BaseModel):
     # résumé YAML lists, so an over-stated YAML can't leak a false fluency claim.
     language_levels: dict[str, str] = Field(default_factory=dict)
 
-    def summary_for_scoring(self) -> str:
+    def summary_for_scoring(self, resume: Any | None = None) -> str:
+        """The candidate block of the score prompt.
+
+        The score prompt asks the model to match the candidate's *skills and
+        experience* against the posting, so those have to be in here — for a
+        long time this returned only name, locations, work authorization and
+        salary, and every fit score was a guess about an unknown person. The
+        background comes from the résumé YAML (``data/resumes/default.yaml`` by
+        default, or *resume* if given): headline, summary, skills groups, a
+        condensed experience list, education, languages and target keywords.
+        Nothing is synthesised — every line is lifted from the user's own files,
+        and the profile's own ``professional_summary``/``skills`` are the
+        fallback when no résumé exists yet.
+        """
         name = " ".join(
             str(self.legal_name.get(k, "")) for k in ("first", "last")
         ).strip()
         locs = ", ".join(self.preferred_locations)
-        return (
+        head = (
             f"Name: {name}\n"
             f"Preferred locations: {locs}\n"
             f"Work authorization: {self.work_authorization}\n"
             f"Salary expectation: {self.salary_expectation}\n"
         )
+        if resume is None:
+            resume = load_default_resume()
+        background = (
+            _resume_background(resume) if resume is not None else self._profile_background()
+        )
+        return head + ("\n" + background + "\n" if background else "")
+
+    def _profile_background(self) -> str:
+        """Skills/summary straight from profile.json — used when no résumé YAML
+        exists yet. Placeholder values from the example file are dropped."""
+        lines: list[str] = []
+        summary = str(getattr(self, "professional_summary", "") or "")
+        if summary and not _is_placeholder(summary):
+            lines.append(f"Summary: {_squash(summary, 600)}")
+        skills = getattr(self, "skills", None)
+        if isinstance(skills, dict):
+            groups = [
+                f"  - {k}: {_join(v)}"
+                for k, v in skills.items()
+                if not str(k).startswith("_") and v and not _is_placeholder(_join(v))
+            ]
+            if groups:
+                lines.append("Skills:")
+                lines.extend(groups)
+        return "\n".join(lines)
+
+
+# --- Candidate background for scoring ----------------------------------------
+_SCORING_BULLET_CHARS = 180
+_SCORING_SUMMARY_CHARS = 600
+
+
+def _squash(text: str, limit: int) -> str:
+    """Collapse whitespace and cap length (with an ellipsis) for prompt lines."""
+    out = " ".join(str(text or "").split())
+    return out if len(out) <= limit else out[: limit - 1].rstrip() + "…"
+
+
+def _join(value: Any) -> str:
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(v) for v in value if str(v).strip())
+    return str(value or "")
+
+
+def _is_placeholder(text: str) -> bool:
+    return text.strip().upper().startswith("TODO")
+
+
+def default_resume_path() -> Path | None:
+    """``data/resumes/default.yaml`` if present, else the first résumé YAML there."""
+    d = PATHS.resumes_dir
+    preferred = d / "default.yaml"
+    if preferred.exists():
+        return preferred
+    if not d.exists():
+        return None
+    return next(iter(sorted([*d.glob("*.yaml"), *d.glob("*.yml")])), None)
+
+
+def load_default_resume() -> Any | None:
+    """The default base résumé, or None when none exists / it fails to parse."""
+    path = default_resume_path()
+    if path is None:
+        return None
+    try:
+        from honestapply.resume.schema import load_resume
+
+        return load_resume(path)
+    except Exception:  # noqa: BLE001 — scoring must still work without a résumé
+        return None
+
+
+def _resume_background(resume: Any) -> str:
+    """Compact, truthful candidate background lifted verbatim (trimmed) from a
+    résumé YAML: headline, summary, skills, experience, education, languages,
+    certifications and target keywords. Kept short — the posting is the long
+    part of the prompt — but complete enough that a fit score means something."""
+    facts = resume.resume_facts
+    lines: list[str] = []
+
+    headline = (facts.contact.title or "").strip()
+    if headline:
+        lines.append(f"Headline: {_squash(headline, 160)}")
+    if resume.summary_variants:
+        lines.append(f"Summary: {_squash(resume.summary_variants[0], _SCORING_SUMMARY_CHARS)}")
+
+    if facts.skills:
+        lines.append("Skills:")
+        for group, items in facts.skills.items():
+            joined = _join(items)
+            if joined.strip():
+                lines.append(f"  - {group}: {_squash(joined, 240)}")
+
+    if facts.experience:
+        lines.append("Experience (most recent first):")
+        for exp in facts.experience:
+            who = " · ".join(p for p in (exp.company, exp.title) if p)
+            when = f" ({exp.dates})" if exp.dates else ""
+            first = _squash(exp.bullets[0], _SCORING_BULLET_CHARS) if exp.bullets else ""
+            lines.append(f"  - {who}{when}" + (f": {first}" if first else ""))
+
+    if facts.education:
+        edu = "; ".join(
+            ", ".join(p for p in (e.degree, e.institution) if p)
+            + (f" ({e.dates})" if e.dates else "")
+            for e in facts.education
+        )
+        if edu:
+            lines.append(f"Education: {edu}")
+    if facts.languages:
+        lines.append(f"Languages: {_join(facts.languages)}")
+    if facts.certifications:
+        lines.append(f"Certifications: {_join(facts.certifications)}")
+    if resume.target_keywords:
+        lines.append(f"Target keywords: {_join(resume.target_keywords)}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

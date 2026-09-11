@@ -10,13 +10,17 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source .venv/bin/activate
+
+# Jobs prepared concurrently by batch_drive (0 = HONESTAPPLY_PREPARE_WORKERS
+# from .env, which ships at 1; 3 is the recommended value).
+PREPARE_WORKERS=${PREPARE_WORKERS:-0}
 DE_TARGET=${DE_TARGET:-15}
 
 echo "=========== german established $(date '+%F %T') ==========="
 echo "--- prepare DE (established only, target ${DE_TARGET}) ---"
 DE=$(python scripts/pick_candidates.py --country DE --limit $((DE_TARGET*12)) --established-only 2>/dev/null)
 if [ -z "$DE" ]; then echo "no eligible candidates"; exit 0; fi
-python scripts/batch_drive.py --ids "$DE" --target "$DE_TARGET"
+python scripts/batch_drive.py --ids "$DE" --target "$DE_TARGET" --workers "$PREPARE_WORKERS"
 
 echo "--- verify letters ---"
 python scripts/verify_letters.py

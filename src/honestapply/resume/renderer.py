@@ -22,6 +22,7 @@ template authored alongside it:
 from __future__ import annotations
 
 import datetime as _dt
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -35,6 +36,12 @@ from honestapply.resume.schema import Resume, ResumeFacts
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 DEFAULT_TEMPLATE = "modern.html"
 DEFAULT_ACCENT = "#1a3c5e"
+
+# WeasyPrint (and the Pango/Cairo stack under it) is not thread-safe. The
+# prepare stages render from a thread pool, so PDF writes are serialised here;
+# the HTML assembly around them stays parallel. Rendering is a fraction of a
+# second against a 10-60s LLM call, so the lock costs nothing measurable.
+_PDF_LOCK = threading.Lock()
 
 
 def _mdbold(value: Any) -> "Markup":
@@ -137,7 +144,8 @@ def render_resume_pdf(
     )
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    weasyprint.HTML(string=html, base_url=str(TEMPLATES_DIR)).write_pdf(str(output_path))
+    with _PDF_LOCK:
+        weasyprint.HTML(string=html, base_url=str(TEMPLATES_DIR)).write_pdf(str(output_path))
     return output_path
 
 
@@ -188,5 +196,6 @@ def render_cover_letter_pdf(
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    weasyprint.HTML(string=doc).write_pdf(str(output_path))
+    with _PDF_LOCK:
+        weasyprint.HTML(string=doc).write_pdf(str(output_path))
     return output_path

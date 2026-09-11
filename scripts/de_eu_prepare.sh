@@ -14,6 +14,10 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
+# Jobs prepared concurrently by batch_drive (0 = HONESTAPPLY_PREPARE_WORKERS
+# from .env, which ships at 1; 3 is the recommended value).
+PREPARE_WORKERS=${PREPARE_WORKERS:-0}
+
 DE_TARGET=${DE_TARGET:-18}
 EU_TARGET=${EU_TARGET:-33}
 DE_POOL=${DE_POOL:-160}
@@ -28,7 +32,7 @@ echo "--- pick DE (pool ${DE_POOL}, target ${DE_TARGET}) ---"
 DE_IDS=$(python scripts/pick_candidates.py --country DE --limit "${DE_POOL}" 2>/dev/null)
 if [ -n "$DE_IDS" ]; then
   echo "DE candidates: $(echo "$DE_IDS" | tr ',' '\n' | wc -l | tr -d ' ')"
-  python scripts/batch_drive.py --ids "$DE_IDS" --target "$DE_TARGET"
+  python scripts/batch_drive.py --ids "$DE_IDS" --target "$DE_TARGET" --workers "$PREPARE_WORKERS"
 else
   echo "no DE candidates picked"
 fi
@@ -38,7 +42,7 @@ echo "--- pick EU_OTHER (pool ${EU_POOL}, target ${EU_TARGET}) ---"
 EU_IDS=$(python scripts/pick_candidates.py --country EU_OTHER --limit "${EU_POOL}" 2>/dev/null)
 if [ -n "$EU_IDS" ]; then
   echo "EU candidates: $(echo "$EU_IDS" | tr ',' '\n' | wc -l | tr -d ' ')"
-  python scripts/batch_drive.py --ids "$EU_IDS" --target "$EU_TARGET"
+  python scripts/batch_drive.py --ids "$EU_IDS" --target "$EU_TARGET" --workers "$PREPARE_WORKERS"
 else
   echo "no EU candidates picked"
 fi

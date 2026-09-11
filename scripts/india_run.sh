@@ -4,6 +4,10 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source .venv/bin/activate
+
+# Jobs prepared concurrently by batch_drive (0 = HONESTAPPLY_PREPARE_WORKERS
+# from .env, which ships at 1; 3 is the recommended value).
+PREPARE_WORKERS=${PREPARE_WORKERS:-0}
 IN_TARGET=${IN_TARGET:-15}
 
 echo "=========== india run $(date '+%F %T') ==========="
@@ -30,7 +34,7 @@ PY
 
 echo "--- prepare India (target ${IN_TARGET}) ---"
 IN=$(python scripts/pick_candidates.py --country IN --limit $((IN_TARGET*12)) 2>/dev/null)
-[ -n "$IN" ] && python scripts/batch_drive.py --ids "$IN" --target "$IN_TARGET"
+[ -n "$IN" ] && python scripts/batch_drive.py --ids "$IN" --target "$IN_TARGET" --workers "$PREPARE_WORKERS"
 
 echo "--- verify letters ---"
 python scripts/verify_letters.py
