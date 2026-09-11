@@ -69,9 +69,12 @@ def get_engine(db_path: Path | None = None) -> Engine:
             # The prepare pool runs one thread per worker, each holding its own
             # connection for the length of a stage (the LLM call included), plus
             # the coordinating thread and whatever CLI command is running
-            # alongside. Size the pool for that instead of the default 5.
+            # alongside. `--workers N` can exceed the .env default, so overflow
+            # is unbounded — a SQLite connection is essentially free, and an
+            # unbounded overflow is far better than starving workers into a
+            # 30s `QueuePool limit` timeout mid-stage.
             pool_size=settings.honestapply_prepare_workers + 2,
-            max_overflow=4,
+            max_overflow=-1,
             connect_args={
                 # Belt and braces: the DBAPI-level timeout covers the window
                 # before the PRAGMA above has been applied on a brand-new

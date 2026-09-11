@@ -68,11 +68,13 @@ class LLMPause:
     worker calls :meth:`wait` before its next LLM stage and sleeps until then.
     """
 
-    def __init__(self, seconds: float | None = None) -> None:
+    def __init__(self, seconds: float | None = None, give_up_after: int | None = None) -> None:
         self._seconds = seconds
+        self._give_up_after = give_up_after
         self._until = 0.0
         self._lock = threading.Lock()
         self.triggers = 0
+        self.consecutive = 0  # consecutive triggers with no success in between
 
     @property
     def seconds(self) -> float:
@@ -80,10 +82,29 @@ class LLMPause:
             return self._seconds
         return float(get_settings().honestapply_llm_pause_seconds)
 
+    @property
+    def give_up_after(self) -> int:
+        if self._give_up_after is not None:
+            return self._give_up_after
+        return int(get_settings().honestapply_llm_pause_give_up_after)
+
+    def should_give_up(self) -> bool:
+        """True once the limit has persisted across `give_up_after` consecutive
+        pauses with no successful call — the run should stop rather than sleep
+        through every remaining job."""
+        n = self.give_up_after
+        return n > 0 and self.consecutive >= n
+
+    def note_progress(self) -> None:
+        """A call succeeded → the limit has cleared; reset the give-up streak."""
+        with self._lock:
+            self.consecutive = 0
+
     def trigger(self, reason: str = "") -> None:
         with self._lock:
             self._until = max(self._until, time.monotonic() + self.seconds)
             self.triggers += 1
+            self.consecutive += 1
         logger.warning(
             "llm rate limit hit — pausing all workers for %ss: %s", self.seconds, reason[:200]
         )
@@ -167,13 +188,24 @@ def run_pool(
     n = resolve_workers(workers)
     pause = pause or PAUSE
     id_list = list(dict.fromkeys(ids))
+    gave_up = threading.Event()
 
     def guarded(jid: int) -> T | None:
-        if stop_event is not None and stop_event.is_set():
+        if gave_up.is_set() or (stop_event is not None and stop_event.is_set()):
+            return None
+        if pause.should_give_up():
+            gave_up.set()
+            if stop_event is not None:
+                stop_event.set()
+            logger.warning(
+                "%s: giving up — usage limit persisted across %d pauses", label, pause.consecutive
+            )
             return None
         pause.wait(stop_event)
         try:
-            return fn(jid)
+            result = fn(jid)
+            pause.note_progress()
+            return result
         except Exception as exc:  # noqa: BLE001 — one job must never take down the pool
             if is_rate_limit(exc):
                 pause.trigger(str(exc))

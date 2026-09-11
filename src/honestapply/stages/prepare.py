@@ -14,9 +14,12 @@ Concurrency model (see :mod:`honestapply.stages._workers` for the rules):
   the DB is the only queue and the same job can't be advanced twice;
 * the LLM call happens with no lock held; ``claude -p`` releases the GIL while
   the subprocess runs, so threads (not processes) are enough;
-* one rate-limit error pauses *every* worker before its next LLM stage;
-* SIGINT/SIGTERM asks in-flight jobs to stop after their current stage — a
-  second SIGINT hard-stops;
+* one rate-limit error pauses *every* worker before its next LLM stage, and a
+  usage limit that persists across ``llm_pause_give_up_after`` pauses aborts the
+  drive instead of sleeping before every remaining job;
+* SIGINT/SIGTERM asks in-flight jobs to stop after their current stage; a second
+  SIGINT also cancels everything still queued (in-flight ``claude -p`` calls
+  still finish or hit their timeout — a signal can't interrupt a subprocess);
 * once *target* jobs are COVERED, queued jobs are cancelled and in-flight ones
   stop after their current stage, so the overshoot is bounded by the worker
   count.
@@ -180,6 +183,12 @@ def _drive_one(jid: int, ctx: DriveContext, stages: Sequence[StageSpec] = STAGES
         if ctx.stop.is_set():
             break
         if stage.uses_llm:
+            # A persistent usage limit should abort the whole drive, not pause
+            # 120s before every one of the remaining queued jobs.
+            if ctx.pause.should_give_up():
+                ctx.stop.set()
+                log.warning("prepare.give_up", consecutive=ctx.pause.consecutive)
+                break
             ctx.pause.wait(ctx.stop)
             if ctx.stop.is_set():
                 break
@@ -198,6 +207,8 @@ def _drive_one(jid: int, ctx: DriveContext, stages: Sequence[StageSpec] = STAGES
             outcome.error = f"{stage.name}: {exc}"
             outcome.last_stage = stage.name
             break
+        if stage.uses_llm:
+            ctx.pause.note_progress()  # an LLM call went through → limit has cleared
         if new_status is None:
             continue  # not at this stage (already past it, or raced) — try the next
         outcome.ran.append(stage.name)
@@ -272,9 +283,17 @@ def drive_jobs(
     summary = DriveSummary()
     pauses_before = ctx.pause.triggers
 
+    _pool_ref: dict[str, ThreadPoolExecutor] = {}
+
     def on_signal(signum, _frame):
         if ctx.stop.is_set():
-            raise KeyboardInterrupt  # second signal: stop now
+            # Second signal: drop everything still queued and re-raise. In-flight
+            # `claude -p` calls still finish or hit their 300s timeout — a Python
+            # signal handler cannot interrupt a running subprocess.
+            pool = _pool_ref.get("pool")
+            if pool is not None:
+                pool.shutdown(wait=False, cancel_futures=True)
+            raise KeyboardInterrupt
         ctx.stopped_by_signal = True
         ctx.stop.set()
         ctx.emit(f"signal {signum} — finishing in-flight stages, then stopping")
@@ -298,7 +317,10 @@ def drive_jobs(
             return
         except Exception as exc:  # noqa: BLE001 — never let one job end the drive
             outcome = JobOutcome(jid, tag=f"[{jid}]", status="?", error=str(exc))
-            final = _peek(jid)
+            try:
+                final = _peek(jid)
+            except Exception:  # noqa: BLE001 — a failed peek must not end the drive either
+                final = None
             if final is not None:
                 _, _, outcome.status, outcome.score, outcome.reason = final
             else:
@@ -318,6 +340,7 @@ def drive_jobs(
         with ThreadPoolExecutor(
             max_workers=n_workers, thread_name_prefix="honestapply-prepare"
         ) as pool:
+            _pool_ref["pool"] = pool
             futures = {pool.submit(_drive_one, jid, ctx, stage_specs): jid for jid in id_list}
             pending = set(futures)
             for fut in as_completed(futures):

@@ -102,6 +102,11 @@ class Settings(BaseSettings):
     # When a worker hits an LLM usage/rate limit, every worker pauses this long
     # before its next LLM call instead of burning the remaining candidates.
     honestapply_llm_pause_seconds: int = 120
+    # Give up the whole run after this many consecutive pauses with no successful
+    # LLM call in between — a persistent usage-window limit should abort fast, not
+    # sleep `pause_seconds` before every one of hundreds of queued jobs. 0 = never
+    # give up (sleep indefinitely).
+    honestapply_llm_pause_give_up_after: int = 3
 
     # --- Derived helpers ---
     @property
@@ -296,7 +301,9 @@ class Profile(BaseModel):
         if resume is None:
             resume = load_default_resume()
         background = (
-            _resume_background(resume) if resume is not None else self._profile_background()
+            _resume_background(resume, self.language_levels)
+            if resume is not None
+            else self._profile_background()
         )
         return head + ("\n" + background + "\n" if background else "")
 
@@ -365,18 +372,23 @@ def load_default_resume() -> Any | None:
         return None
 
 
-def _resume_background(resume: Any) -> str:
+def _resume_background(resume: Any, language_levels: dict[str, str] | None = None) -> str:
     """Compact, truthful candidate background lifted verbatim (trimmed) from a
     résumé YAML: headline, summary, skills, experience, education, languages,
     certifications and target keywords. Kept short — the posting is the long
-    part of the prompt — but complete enough that a fit score means something."""
+    part of the prompt — but complete enough that a fit score means something.
+
+    *language_levels* (the profile's authoritative CEFR map) overrides the
+    résumé's free-text languages so the scorer never sees a bare "German" that
+    could inflate fit on a German-required role — the same no-over-claim guard
+    the cover-letter and tailor stages already apply."""
     facts = resume.resume_facts
     lines: list[str] = []
 
     headline = (facts.contact.title or "").strip()
-    if headline:
+    if headline and not _is_placeholder(headline):
         lines.append(f"Headline: {_squash(headline, 160)}")
-    if resume.summary_variants:
+    if resume.summary_variants and not _is_placeholder(resume.summary_variants[0]):
         lines.append(f"Summary: {_squash(resume.summary_variants[0], _SCORING_SUMMARY_CHARS)}")
 
     if facts.skills:
@@ -386,13 +398,17 @@ def _resume_background(resume: Any) -> str:
             if joined.strip():
                 lines.append(f"  - {group}: {_squash(joined, 240)}")
 
-    if facts.experience:
+    exp_lines = []
+    for exp in facts.experience or []:
+        who = " · ".join(p for p in (exp.company, exp.title) if p)
+        if not who or _is_placeholder(who):
+            continue
+        when = f" ({exp.dates})" if exp.dates else ""
+        first = _squash(exp.bullets[0], _SCORING_BULLET_CHARS) if exp.bullets else ""
+        exp_lines.append(f"  - {who}{when}" + (f": {first}" if first else ""))
+    if exp_lines:
         lines.append("Experience (most recent first):")
-        for exp in facts.experience:
-            who = " · ".join(p for p in (exp.company, exp.title) if p)
-            when = f" ({exp.dates})" if exp.dates else ""
-            first = _squash(exp.bullets[0], _SCORING_BULLET_CHARS) if exp.bullets else ""
-            lines.append(f"  - {who}{when}" + (f": {first}" if first else ""))
+        lines.extend(exp_lines)
 
     if facts.education:
         edu = "; ".join(
@@ -402,7 +418,14 @@ def _resume_background(resume: Any) -> str:
         )
         if edu:
             lines.append(f"Education: {edu}")
-    if facts.languages:
+    if language_levels:
+        # Authoritative CEFR levels from the profile — capped source of truth.
+        langs = ", ".join(
+            f"{str(name).capitalize()} ({lvl})" for name, lvl in language_levels.items() if name
+        )
+        if langs:
+            lines.append(f"Languages: {langs}")
+    elif facts.languages:
         lines.append(f"Languages: {_join(facts.languages)}")
     if facts.certifications:
         lines.append(f"Certifications: {_join(facts.certifications)}")

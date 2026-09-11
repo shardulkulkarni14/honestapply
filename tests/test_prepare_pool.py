@@ -377,6 +377,30 @@ def test_rate_limit_pauses_every_worker_and_leaves_the_job_unmarked(resume_dir, 
     assert all(st[j] == Status.COVERED for j in ids if j != limited[0])
 
 
+def test_pause_gives_up_after_consecutive_triggers():
+    """A persistent usage limit must abort the run, not sleep before every job."""
+    from honestapply.stages._workers import LLMPause
+
+    pause = LLMPause(seconds=0, give_up_after=3)
+    assert not pause.should_give_up()
+    pause.trigger("usage limit")
+    pause.trigger("usage limit")
+    assert not pause.should_give_up()  # 2 < 3
+    pause.trigger("usage limit")
+    assert pause.should_give_up()  # 3 >= 3
+    pause.note_progress()  # a call went through → limit cleared, streak resets
+    assert not pause.should_give_up()
+
+
+def test_pause_give_up_disabled_when_zero():
+    from honestapply.stages._workers import LLMPause
+
+    pause = LLMPause(seconds=0, give_up_after=0)
+    for _ in range(10):
+        pause.trigger("usage limit")
+    assert not pause.should_give_up()  # 0 = never give up
+
+
 def test_rate_limit_detection_is_narrow():
     from honestapply.stages._workers import is_rate_limit
 

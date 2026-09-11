@@ -56,6 +56,17 @@ def test_summary_contains_experience_and_skills():
     assert len(text) < 4000
 
 
+def test_language_levels_override_the_resume_languages():
+    """The profile's authoritative CEFR levels win, so the scorer never sees a
+    bare 'German' that could inflate fit on a language-gated role."""
+    profile = Profile(
+        legal_name={"first": "Alex", "last": "Example"},
+        language_levels={"english": "C1", "german": "A2"},
+    )
+    text = profile.summary_for_scoring(_resume())
+    assert "English (C1)" in text and "German (A2)" in text
+
+
 def test_summary_only_surfaces_what_the_resume_says():
     """No synthesis: every experience/skills line is lifted from the YAML."""
     resume = _resume()
