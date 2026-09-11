@@ -304,38 +304,47 @@ def enrich(
     console.print(f"[green]Enriched {run_enrich(limit=limit, ids=_parse_ids(ids))} jobs.[/green]")
 
 
+_WORKERS_HELP = "Jobs to process concurrently (default: HONESTAPPLY_PREPARE_WORKERS)."
+
+
 @app.command()
 def score(
     min_score: int = typer.Option(None, help="Override min fit score."),
     limit: int = typer.Option(None),
     ids: str = typer.Option(None, help="Comma-separated job IDs to limit to."),
+    workers: int = typer.Option(None, help=_WORKERS_HELP),
 ) -> None:
     """Stage 3 — LLM fit scoring + gate. → run_score()"""
     from honestapply.stages.score import run_score
 
-    console.print(f"[green]Scored {run_score(min_score=min_score, limit=limit, ids=_parse_ids(ids))} jobs.[/green]")
+    n = run_score(min_score=min_score, limit=limit, ids=_parse_ids(ids), workers=workers)
+    console.print(f"[green]Scored {n} jobs.[/green]")
 
 
 @app.command()
 def tailor(
     limit: int = typer.Option(None),
     ids: str = typer.Option(None, help="Comma-separated job IDs to limit to."),
+    workers: int = typer.Option(None, help=_WORKERS_HELP),
 ) -> None:
     """Stage 4 — tailor resume per job (immutable-facts enforced). → run_tailor()"""
     from honestapply.stages.tailor import run_tailor
 
-    console.print(f"[green]Tailored {run_tailor(limit=limit, ids=_parse_ids(ids))} resumes.[/green]")
+    n = run_tailor(limit=limit, ids=_parse_ids(ids), workers=workers)
+    console.print(f"[green]Tailored {n} resumes.[/green]")
 
 
 @app.command(name="cover-letter")
 def cover_letter(
     limit: int = typer.Option(None),
     ids: str = typer.Option(None, help="Comma-separated job IDs to limit to."),
+    workers: int = typer.Option(None, help=_WORKERS_HELP),
 ) -> None:
     """Stage 5 — generate per-job cover letters. → run_cover_letters()"""
     from honestapply.stages.cover_letter import run_cover_letters
 
-    console.print(f"[green]Generated {run_cover_letters(limit=limit, ids=_parse_ids(ids))} cover letters.[/green]")
+    n = run_cover_letters(limit=limit, ids=_parse_ids(ids), workers=workers)
+    console.print(f"[green]Generated {n} cover letters.[/green]")
 
 
 @app.command()
@@ -395,6 +404,7 @@ def run(
     prefilter: bool = typer.Option(False, "--prefilter", help="Run the cheap relevance gate before enrich."),
     ids: str = typer.Option(None, help="Comma-separated job IDs to limit every stage to."),
     limit: int = typer.Option(None, help="Cap how many jobs each LLM stage processes."),
+    workers: int = typer.Option(None, help=_WORKERS_HELP),
 ) -> None:
     """Chain stages. Default runs discover→enrich→score→tailor→cover-letter (NOT apply).
 
@@ -412,9 +422,9 @@ def run(
         "discover": lambda: __import__("honestapply.stages.discover", fromlist=["run_discover"]).run_discover(),
         "prefilter": lambda: __import__("honestapply.stages.prefilter", fromlist=["run_prefilter"]).run_prefilter(ids=id_list, limit=limit),
         "enrich": lambda: __import__("honestapply.stages.enrich", fromlist=["run_enrich"]).run_enrich(limit=limit, ids=id_list),
-        "score": lambda: __import__("honestapply.stages.score", fromlist=["run_score"]).run_score(limit=limit, ids=id_list),
-        "tailor": lambda: __import__("honestapply.stages.tailor", fromlist=["run_tailor"]).run_tailor(limit=limit, ids=id_list),
-        "cover-letter": lambda: __import__("honestapply.stages.cover_letter", fromlist=["run_cover_letters"]).run_cover_letters(limit=limit, ids=id_list),
+        "score": lambda: __import__("honestapply.stages.score", fromlist=["run_score"]).run_score(limit=limit, ids=id_list, workers=workers),
+        "tailor": lambda: __import__("honestapply.stages.tailor", fromlist=["run_tailor"]).run_tailor(limit=limit, ids=id_list, workers=workers),
+        "cover-letter": lambda: __import__("honestapply.stages.cover_letter", fromlist=["run_cover_letters"]).run_cover_letters(limit=limit, ids=id_list, workers=workers),
     }
     for st in todo:
         if st not in fn:

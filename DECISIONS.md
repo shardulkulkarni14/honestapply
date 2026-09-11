@@ -72,6 +72,42 @@ Newest at the bottom of each phase.
   `<<<RESULT>>>{...}<<<END>>>` block. `profile.example.json` is an anonymized template;
   everything the user must personalize is listed in a top-level `_TODO_confirm` array.
 
+## Parallel prepare (2026-09)
+
+- The prepare stages are LLM-bound (`claude -p` spawns a process, 10-60s a call), so
+  **threads, not processes or asyncio**: the GIL is released in the subprocess wait, and
+  the stage code (WeasyPrint, requests, the ORM) is synchronous. `stages/prepare.py`
+  drives each job through enrich → score → tailor → cover on a `ThreadPoolExecutor`;
+  `stages/_workers.py` holds the shared plumbing the per-stage `run_*` runners use too.
+- **The DB is the queue.** No in-memory work list; a job's status says which stage it is
+  waiting for. Each stage is its own short transaction: read, do the slow work with no
+  lock held, then `commit_if_status()` — `BEGIN IMMEDIATE`, re-read the status under
+  the write lock, commit only if it is still what the stage expected. That is what keeps
+  two workers *or two processes* from advancing the same job twice. Autoflush must stay
+  off around that re-read, or the session flushes its own pending UPDATE first and the
+  check compares against itself (this bit us in the first cut).
+- Side effect worth having: per-stage commits mean `job_events` now records every hop
+  (`enriched → scored → tailored → covered`) instead of only a drive's net change.
+- `HONESTAPPLY_PREPARE_WORKERS` ships at **1** so behaviour is unchanged until raised;
+  3 is the recommended value. The `claude -p` spawn is gated by a process-wide
+  semaphore so "never more than N" holds regardless of caller. WeasyPrint is not
+  thread-safe: PDF writes are serialised behind one lock. A rate-limit error pauses
+  every worker (`HONESTAPPLY_LLM_PAUSE_SECONDS`) and leaves the job untouched — it
+  says nothing about the job — where a genuine per-job error still marks `failed` in
+  the stage runners (and leaves the job as-is in the batch driver, as before).
+- **Apply stays a single serialised consumer.** The rate limit and dry-run canary are
+  per-process state and the browser profile is shared; a test pins that apply never
+  grows a `workers` knob.
+- Gotcha recorded so nobody re-learns it: `Executor.shutdown(cancel_futures=True)` cancels
+  queued futures via `Future.cancel()`, which does **not** wake `as_completed()` — so a
+  loop that cancels and keeps iterating hangs forever. On target-reached the driver
+  leaves the loop and drains only the still-running futures.
+- Scoring used to send the model only name/locations/work-auth/salary, then ask it to
+  match "the candidate's skills and experience" — which it never had. The candidate
+  block now carries the résumé YAML's headline, summary, skills groups, condensed
+  experience, education, languages and target keywords (profile fields as fallback),
+  lifted verbatim — nothing synthesised.
+
 ## Phase 7/8 — Dashboard, tests
 
 - Originally Streamlit; replaced (2026-06) by a FastAPI backend + optional Next.js static

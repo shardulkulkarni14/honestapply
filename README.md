@@ -153,6 +153,19 @@ You never have to grant the apply stage anything: `--dry-run` plus
 Stages accept `--ids 101,102` and `--limit N` (and `honestapply run --prefilter --ids …`)
 to drive a curated/bounded subset instead of draining the whole backlog.
 
+The prepare stages (enrich/score/tailor/cover-letter) can work on several jobs at
+once: `--workers N` on `score`, `tailor`, `cover-letter`, `run` and
+`scripts/batch_drive.py`, or `HONESTAPPLY_PREPARE_WORKERS` in `.env` (the shell
+loops pass `PREPARE_WORKERS`). It ships at **1** — identical to the serial
+behaviour — and **3** is the recommended value once a run looks right: the
+stages are LLM-bound, so a few threads overlap the waits without tripping
+Claude Code's usage limits. Each job still commits one stage at a time through a
+compare-and-set, so two workers (or two processes) never advance the same job
+twice, and a rate-limit error pauses every worker instead of burning the queue.
+`HONESTAPPLY_SCORE_PROVIDER` optionally scores with a different provider (e.g.
+`anthropic` over the API) while the rest stays on the key-free CLI. **Apply is
+never parallel**, whatever this is set to.
+
 ## Dashboard
 
 `honestapply dashboard` (default `http://localhost:8501`, `--port` to change) serves **one

@@ -14,6 +14,10 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
+# Jobs prepared concurrently by batch_drive (0 = HONESTAPPLY_PREPARE_WORKERS
+# from .env, which ships at 1; 3 is the recommended value).
+PREPARE_WORKERS=${PREPARE_WORKERS:-0}
+
 DE_TARGET=${DE_TARGET:-10}
 IN_TARGET=${IN_TARGET:-10}
 # Candidates are pulled well above target because the fit-score gate (min 6) is
@@ -46,7 +50,7 @@ drive() {
     echo "no eligible ${country} candidates"
     return
   fi
-  python scripts/batch_drive.py --ids "$ids" --target "$target"
+  python scripts/batch_drive.py --ids "$ids" --target "$target" --workers "$PREPARE_WORKERS"
 }
 
 echo ""

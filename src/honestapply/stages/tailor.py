@@ -26,11 +26,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import yaml
+from sqlalchemy import select
 
 from honestapply.config import PATHS, get_settings
 from honestapply.db.models import Job, Status
 from honestapply.db.session import session_scope
-from honestapply.llm.base import LLMError, get_provider
+from honestapply.llm.base import LLMProvider, get_provider
 from honestapply.llm.untrusted import fence
 from honestapply.logging_setup import get_logger
 from honestapply.resume.renderer import render_resume_pdf
@@ -40,6 +41,7 @@ from honestapply.resume.schema import (
     keyword_match_score,
     list_resumes,
 )
+from honestapply.stages._workers import run_pool, run_stage_on_job
 
 if TYPE_CHECKING:
     pass
@@ -208,10 +210,31 @@ def _tailor_one(job: Job, provider, resumes: list[Resume]) -> None:
     logger.info("tailor: job %d -> TAILORED, PDF at %s", job.id, pdf_path)
 
 
-def run_tailor(limit: int | None = None, ids: list[int] | None = None) -> int:
+def tailor_job(
+    jid: int,
+    *,
+    provider: LLMProvider,
+    resumes: list[Resume],
+    mark_failed: bool = True,
+) -> str | None:
+    """Tailor one SCORED job in its own transaction; returns the resulting
+    status (tailored / needs_human / failed), or None if it wasn't SCORED."""
+    return run_stage_on_job(
+        jid,
+        stage="tailor",
+        expects=Status.SCORED,
+        work=lambda job: _tailor_one(job, provider, resumes),
+        mark_failed=mark_failed,
+    )
+
+
+def run_tailor(limit: int | None = None, ids: list[int] | None = None,
+               workers: int | None = None) -> int:
     """Tailor resumes for SCORED jobs. Returns count successfully tailored.
 
-    *ids* restricts to a curated subset (still SCORED-only).
+    *ids* restricts to a curated subset (still SCORED-only). *workers* jobs are
+    tailored at once (default ``HONESTAPPLY_PREPARE_WORKERS``); each commits in
+    its own transaction.
     """
     settings = get_settings()
     provider = get_provider(settings)
@@ -223,29 +246,19 @@ def run_tailor(limit: int | None = None, ids: list[int] | None = None) -> int:
 
     logger.info("tailor: loaded %d base resumes", len(resumes))
 
-    processed = 0
-
     with session_scope() as session:
-        query = session.query(Job).filter(Job.status == Status.SCORED)
+        query = select(Job.id).where(Job.status == Status.SCORED).order_by(Job.id)
         if ids:
-            query = query.filter(Job.id.in_(ids))
+            query = query.where(Job.id.in_(ids))
         if limit is not None:
             query = query.limit(limit)
-        jobs = query.all()
-        logger.info("tailor: found %d SCORED jobs", len(jobs))
+        job_ids = list(session.execute(query).scalars())
+    logger.info("tailor: found %d SCORED jobs", len(job_ids))
 
-        for job in jobs:
-            try:
-                _tailor_one(job, provider, resumes)
-                if job.status == Status.TAILORED:
-                    processed += 1
-            except LLMError as exc:
-                logger.error("tailor: job %d LLM error: %s", job.id, exc)
-                job.status = Status.FAILED
-                job.status_reason = str(exc)
-            except Exception as exc:
-                logger.exception("tailor: job %d unexpected error: %s", job.id, exc)
-                job.status = Status.FAILED
-                job.status_reason = str(exc)
-
-    return processed
+    results = run_pool(
+        lambda jid: tailor_job(jid, provider=provider, resumes=resumes),
+        job_ids,
+        workers,
+        label="tailor",
+    )
+    return sum(1 for r in results if r == Status.TAILORED)

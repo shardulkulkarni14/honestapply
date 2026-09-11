@@ -10,6 +10,10 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
+# Jobs prepared concurrently by batch_drive (0 = HONESTAPPLY_PREPARE_WORKERS
+# from .env, which ships at 1; 3 is the recommended value).
+PREPARE_WORKERS=${PREPARE_WORKERS:-0}
+
 DE_TARGET=${DE_TARGET:-12}
 POOL_FACTOR=${POOL_FACTOR:-12}
 MAX_QUEUE=${MAX_QUEUE:-20}      # pause producing if the consumer falls behind
@@ -49,7 +53,7 @@ while true; do
     sleep 1200
     continue
   fi
-  python scripts/batch_drive.py --ids "$ids" --target "$DE_TARGET" \
+  python scripts/batch_drive.py --ids "$ids" --target "$DE_TARGET" --workers "$PREPARE_WORKERS" \
     > data/logs/prepare_de_established.log 2>&1
 
   n=$(grep -c 'COVERED (score' data/logs/prepare_de_established.log 2>/dev/null | head -1)

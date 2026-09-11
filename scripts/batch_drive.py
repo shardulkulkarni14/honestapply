@@ -5,23 +5,22 @@ Unlike `honestapply run`, this never touches the rest of the backlog: it operate
 strictly on the IDs passed in. Each job advances as far as it can; a job that
 fails to score the gate, or routes to needs_human, simply stops.
 
+The work happens in honestapply.stages.prepare.drive_jobs, on a small thread
+pool (--workers; default HONESTAPPLY_PREPARE_WORKERS, which ships at 1 so the
+behaviour is the familiar serial one until raised — 3 is the recommended
+value). Keep this file's name and its per-job output lines as they are: the
+shell loops pgrep `batch_drive.py` and grep `COVERED (score`.
+
 Usage:
-    python scripts/batch_drive.py --ids 101,102,103 [--target 20] [--min-score 6]
+    python scripts/batch_drive.py --ids 101,102,103 [--target 20] [--min-score 6] [--workers 3]
     python scripts/batch_drive.py --ids-file data/batch_ids.txt
 """
 from __future__ import annotations
 
 import argparse
 
-from honestapply.config import PATHS, get_settings, load_profile
-from honestapply.db.models import Job, Status
-from honestapply.db.session import session_scope
-from honestapply.llm.base import get_provider
-from honestapply.resume.schema import list_resumes
-from honestapply.stages.cover_letter import _cover_one
-from honestapply.stages.enrich import _enrich_job
-from honestapply.stages.score import _score_one
-from honestapply.stages.tailor import _tailor_one
+from honestapply.config import get_settings
+from honestapply.stages.prepare import drive_jobs
 
 
 def main() -> None:
@@ -30,6 +29,10 @@ def main() -> None:
     ap.add_argument("--ids-file", default="", help="file with one ID per line")
     ap.add_argument("--target", type=int, default=0, help="stop once this many COVERED reached (0=all)")
     ap.add_argument("--min-score", type=int, default=None)
+    ap.add_argument(
+        "--workers", type=int, default=0,
+        help="jobs prepared concurrently (0 = HONESTAPPLY_PREPARE_WORKERS from settings)",
+    )
     args = ap.parse_args()
 
     ids: list[int] = []
@@ -44,58 +47,22 @@ def main() -> None:
 
     settings = get_settings()
     threshold = args.min_score if args.min_score is not None else settings.honestapply_min_score
-    provider = get_provider(settings)
-    profile = load_profile()
-    profile_summary = profile.summary_for_scoring()
-    resumes = list_resumes(PATHS.resumes_dir)
+    workers = args.workers if args.workers > 0 else settings.honestapply_prepare_workers
+    print(
+        f"batch_drive: {len(ids)} jobs, threshold={threshold}, "
+        f"target={args.target or 'all'}, workers={workers}",
+        flush=True,
+    )
 
-    covered = 0
-    print(f"batch_drive: {len(ids)} jobs, threshold={threshold}, target={args.target or 'all'}")
+    summary = drive_jobs(
+        ids,
+        workers=workers,
+        target=args.target,
+        min_score=threshold,
+        emit=lambda line: print(line, flush=True),
+    )
 
-    for jid in ids:
-        if args.target and covered >= args.target:
-            print(f"target {args.target} COVERED reached — stopping")
-            break
-
-        # Each job in its own transaction so one failure can't roll back others.
-        try:
-            with session_scope() as s:
-                job = s.get(Job, jid)
-                if job is None:
-                    print(f"[{jid}] not found")
-                    continue
-                tag = f"[{jid}] {job.company} / {(job.title or '')[:45]}"
-
-                if job.status == Status.DISCOVERED:
-                    ok = _enrich_job(job)
-                    if not ok or job.status != Status.ENRICHED:
-                        print(f"{tag} -> enrich failed ({job.status})")
-                        continue
-
-                if job.status == Status.ENRICHED:
-                    _score_one(job, provider, profile_summary, threshold)
-                    if job.status != Status.SCORED:
-                        print(f"{tag} -> score={job.score} {job.status}")
-                        continue
-
-                if job.status == Status.SCORED:
-                    _tailor_one(job, provider, resumes)
-                    if job.status != Status.TAILORED:
-                        print(f"{tag} -> tailor: {job.status} ({job.status_reason})")
-                        continue
-
-                if job.status == Status.TAILORED:
-                    _cover_one(job, provider, resumes)
-
-                if job.status == Status.COVERED:
-                    covered += 1
-                    print(f"{tag} -> COVERED (score={job.score})  [{covered} total]")
-                else:
-                    print(f"{tag} -> {job.status} ({job.status_reason})")
-        except Exception as exc:  # noqa: BLE001
-            print(f"[{jid}] EXCEPTION: {exc}")
-
-    print(f"\nbatch_drive done: {covered} newly COVERED")
+    print(f"\nbatch_drive done: {summary.covered} newly COVERED", flush=True)
 
 
 if __name__ == "__main__":

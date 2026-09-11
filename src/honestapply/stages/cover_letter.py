@@ -17,14 +17,17 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from sqlalchemy import select
+
 from honestapply.config import PATHS, get_settings
 from honestapply.db.models import Job, Status
 from honestapply.db.session import session_scope
-from honestapply.llm.base import LLMError, get_provider
+from honestapply.llm.base import LLMProvider, get_provider
 from honestapply.llm.untrusted import fence
 from honestapply.logging_setup import get_logger
 from honestapply.resume.renderer import render_cover_letter_pdf
 from honestapply.resume.schema import Resume, keyword_match_score, list_resumes
+from honestapply.stages._workers import run_pool, run_stage_on_job
 
 logger = get_logger(__name__)
 
@@ -369,10 +372,32 @@ def _cover_one(job: Job, provider, resumes: list[Resume]) -> None:
     logger.info("cover: job %d -> COVERED, PDF at %s", job.id, pdf_path)
 
 
-def run_cover_letters(limit: int | None = None, ids: list[int] | None = None) -> int:
+def cover_job(
+    jid: int,
+    *,
+    provider: LLMProvider,
+    resumes: list[Resume],
+    mark_failed: bool = True,
+) -> str | None:
+    """Write the cover letter for one TAILORED job in its own transaction;
+    returns the resulting status (covered / needs_human / failed), or None if
+    it wasn't TAILORED."""
+    return run_stage_on_job(
+        jid,
+        stage="cover",
+        expects=Status.TAILORED,
+        work=lambda job: _cover_one(job, provider, resumes),
+        mark_failed=mark_failed,
+    )
+
+
+def run_cover_letters(limit: int | None = None, ids: list[int] | None = None,
+                      workers: int | None = None) -> int:
     """Generate cover letters for TAILORED jobs. Returns count generated.
 
-    *ids* restricts to a curated subset (still TAILORED-only).
+    *ids* restricts to a curated subset (still TAILORED-only). *workers* jobs
+    are processed at once (default ``HONESTAPPLY_PREPARE_WORKERS``); each
+    commits in its own transaction.
     """
     settings = get_settings()
     provider = get_provider(settings)
@@ -380,29 +405,19 @@ def run_cover_letters(limit: int | None = None, ids: list[int] | None = None) ->
     resumes = list_resumes(PATHS.resumes_dir)
     logger.info("cover: loaded %d base resumes", len(resumes))
 
-    processed = 0
-
     with session_scope() as session:
-        query = session.query(Job).filter(Job.status == Status.TAILORED)
+        query = select(Job.id).where(Job.status == Status.TAILORED).order_by(Job.id)
         if ids:
-            query = query.filter(Job.id.in_(ids))
+            query = query.where(Job.id.in_(ids))
         if limit is not None:
             query = query.limit(limit)
-        jobs = query.all()
-        logger.info("cover: found %d TAILORED jobs", len(jobs))
+        job_ids = list(session.execute(query).scalars())
+    logger.info("cover: found %d TAILORED jobs", len(job_ids))
 
-        for job in jobs:
-            try:
-                _cover_one(job, provider, resumes)
-                if job.status == Status.COVERED:
-                    processed += 1
-            except LLMError as exc:
-                logger.error("cover: job %d LLM error: %s", job.id, exc)
-                job.status = Status.FAILED
-                job.status_reason = str(exc)
-            except Exception as exc:
-                logger.exception("cover: job %d unexpected error: %s", job.id, exc)
-                job.status = Status.FAILED
-                job.status_reason = str(exc)
-
-    return processed
+    results = run_pool(
+        lambda jid: cover_job(jid, provider=provider, resumes=resumes),
+        job_ids,
+        workers,
+        label="cover",
+    )
+    return sum(1 for r in results if r == Status.COVERED)
