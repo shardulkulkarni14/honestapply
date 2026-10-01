@@ -45,6 +45,10 @@
   .card .n{font-size:22px; font-weight:700; letter-spacing:-.02em}
   .card .l{font-size:11.5px; color:var(--muted); text-transform:capitalize; display:flex; align-items:center; gap:6px}
   .card .l::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--c,var(--i-default))}
+  /* presentation mode: hide aggregate numbers, keep filters usable */
+  body.present #subtitle, body.present #count{visibility:hidden}
+  body.present .card .n{display:none}
+  body.present .card{padding-top:14px; padding-bottom:14px}
 
   /* upcoming interviews banner */
   .upcoming{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px}
@@ -174,6 +178,7 @@
     <h1>honestapply<span class="dot">.</span></h1>
     <span class="sub" id="subtitle">loading…</span>
     <span class="spacer"></span>
+    <button class="btn" onclick="togglePresent()">🙈 Present</button>
     <button class="btn" onclick="load()">↻ Refresh</button>
   </header>
 
@@ -313,6 +318,9 @@ function renderCards(){
 }
 
 function setFilter(s){ filter = (filter===s? null : s); renderCards(); renderRows(); }
+
+function togglePresent(){ document.body.classList.toggle('present'); }
+(function(){ if(new URLSearchParams(location.search).get('present')==='1') document.body.classList.add('present'); })();
 
 function renderRows(){
   const q=document.getElementById('q').value.toLowerCase();

@@ -17,7 +17,7 @@ source .venv/bin/activate
 # from .env, which ships at 1; 3 is the recommended value).
 PREPARE_WORKERS=${PREPARE_WORKERS:-0}
 
-DE_TARGET=${DE_TARGET:-12}     # Germany + rest of Europe
+DE_TARGET=${DE_TARGET:-12}     # Germany only (German cities / ", DE" / "(germany)")
 IN_TARGET=${IN_TARGET:-15}     # India (Hyderabad first, then remote-into-India)
 POOL_FACTOR=${POOL_FACTOR:-12}
 MAX_QUEUE=${MAX_QUEUE:-25}     # stop preparing if the consumer is this far behind
@@ -59,7 +59,7 @@ while true; do
     if [ -z "$ids" ]; then echo "no eligible ${country} candidates" > "$log"; return; fi
     python scripts/batch_drive.py --ids "$ids" --target "$target" --workers "$PREPARE_WORKERS" > "$log" 2>&1
   }
-  prepare EU "$DE_TARGET" data/logs/prepare_eu.log &
+  prepare DE "$DE_TARGET" data/logs/prepare_eu.log &
   P1=$!
   prepare IN "$IN_TARGET" data/logs/prepare_in.log &
   P2=$!

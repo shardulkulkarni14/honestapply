@@ -177,9 +177,13 @@ def _mock_result(dry_run: bool, job_dir: Path) -> dict:
 
 def _run_claude(instructions_text: str) -> dict:
     """Invoke the claude CLI and parse the <<<RESULT>>> block from stdout."""
+    # Model for the browser-apply agent. Defaults to Opus 5; override with
+    # HONESTAPPLY_APPLY_MODEL if needed.
+    apply_model = os.environ.get("HONESTAPPLY_APPLY_MODEL", "claude-opus-5")
     try:
         proc = subprocess.run(
-            ["claude", "--dangerously-skip-permissions", "-p", instructions_text],
+            ["claude", "--dangerously-skip-permissions", "--model", apply_model,
+             "-p", instructions_text],
             capture_output=True,
             text=True,
             timeout=600,

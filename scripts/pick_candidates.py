@@ -84,9 +84,33 @@ _DE = re.compile(
 )
 
 # Employers to never apply to, regardless of score. Kept empty here on purpose:
-# a personal do-not-apply list belongs in the gitignored config/employers.yaml,
-# not in version control.
+# a personal do-not-apply list belongs in the gitignored config, not in version
+# control. Exact company names go here; substring rules live in the file below.
 _HARD_EXCLUDE: set[str] = set()
+
+
+def _load_do_not_apply() -> set[str]:
+    """Case-insensitive company substrings from gitignored config/do_not_apply.txt.
+
+    Any company name containing one of these is skipped, so a personal
+    do-not-apply list (e.g. an employer handled via a referral) never lands in
+    version control. Missing file => empty set.
+    """
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "config" / "do_not_apply.txt"
+    subs: set[str] = set()
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                subs.add(line.lower())
+    except FileNotFoundError:
+        pass
+    return subs
+
+
+_HARD_EXCLUDE_SUBSTR: set[str] = _load_do_not_apply()
 
 # Staffing agencies and body-shops. They post other companies' roles, so the JD
 # rarely matches the real employer and the application goes to a recruiter
@@ -300,6 +324,8 @@ def main() -> None:
         for j in rows:
             company = (j.company or "").strip()
             if company.lower() in blocked or company.lower() in _BAD_COMPANY:
+                continue
+            if any(sub in company.lower() for sub in _HARD_EXCLUDE_SUBSTR):
                 continue
             if _AGENCY.search(company):
                 continue
