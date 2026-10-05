@@ -125,7 +125,6 @@ def doctor() -> None:
         ("python-jobspy (discover)", "jobspy", False),
         ("Streamlit (dashboard)", "streamlit", False),
         ("anthropic SDK (llm)", "anthropic", False),
-        ("Gmail API (inbox)", "googleapiclient", False),
     ]:
         ok = importable(mod)
         row(label, ok if (required or ok) else None,
@@ -144,21 +143,34 @@ def doctor() -> None:
         row(f"LLM key ({provider})", bool(key),
             "present" if key else "missing — set in .env (or use LLM_PROVIDER=claude_cli for no key)")
 
-    # Playwright MCP
+    # MCP servers (Playwright for apply, Gmail for inbox) — one `claude mcp list`.
     claude_bin = shutil.which("claude")
-    mcp_ok = None
-    detail = "claude CLI not found"
+    mcp_list = ""
+    mcp_err: str | None = None
     if claude_bin:
         try:
-            out = subprocess.run(
+            mcp_list = subprocess.run(
                 [claude_bin, "mcp", "list"], capture_output=True, text=True, timeout=30
             ).stdout.lower()
-            mcp_ok = "playwright" in out
-            detail = "configured" if mcp_ok else "not configured — run: claude mcp add playwright -- npx @playwright/mcp@latest"
         except Exception as exc:  # pragma: no cover
-            mcp_ok = False
-            detail = f"check failed: {exc}"
-    row("Playwright MCP", mcp_ok, detail)
+            mcp_err = str(exc)
+
+    def _mcp_row(label: str, name: str, add_hint: str) -> None:
+        if not claude_bin:
+            row(label, None, "claude CLI not found")
+        elif mcp_err is not None:
+            row(label, False, f"check failed: {mcp_err}")
+        else:
+            present = name in mcp_list
+            # `claude mcp list` marks a remote server "connected"/"failed" after
+            # its name; treat an explicit "connected" as the healthy signal.
+            connected = present and "fail" not in mcp_list.split(name, 1)[1][:40]
+            row(label, present and connected, "connected" if present else f"not configured — {add_hint}")
+
+    _mcp_row("Playwright MCP (apply)", "playwright",
+             "run: claude mcp add playwright -- npx @playwright/mcp@latest")
+    _mcp_row("Gmail MCP (inbox)", settings.gmail_mcp_server_name,
+             "run: honestapply gmail-connect (see docs/GMAIL_SETUP.md)")
 
     # Chrome / Chromium
     chrome_paths = [
@@ -176,14 +188,6 @@ def doctor() -> None:
         row("Database writable", True, str(settings.db_path))
     except Exception as exc:
         row("Database writable", False, str(exc))
-
-    # Gmail inbox sync (optional): is it connected?
-    if settings.gmail_token_file.exists():
-        row("Gmail (inbox)", True, f"connected — token at {settings.gmail_token_file}")
-    elif settings.gmail_credentials_file.exists():
-        row("Gmail (inbox)", None, "client set up; not connected — run: honestapply gmail-connect")
-    else:
-        row("Gmail (inbox)", None, "optional — see docs/GMAIL_SETUP.md to enable")
 
     console.print(table)
 
@@ -409,23 +413,68 @@ def apply_packet(
 
 @app.command(name="gmail-connect")
 def gmail_connect() -> None:
-    """Connect your Gmail account (one-time OAuth) for inbox sync. → email.gmail.connect()
+    """Connect Gmail for inbox sync by authorizing the Gmail MCP server.
 
-    Opens a browser for Google's consent screen, then saves a token locally
-    (outside the repo). Needs the `[gmail]` extra and an OAuth client JSON at
-    config/gmail_credentials.json — see docs/GMAIL_SETUP.md.
+    The inbox stage reads Gmail over MCP (see `.mcp.json`), so "connecting" means
+    authorizing that MCP server in Claude Code once — a browser opens for Google's
+    consent screen and Claude Code stores the token. honestapply keeps no Gmail
+    credentials of its own. See docs/GMAIL_SETUP.md for the one-time Google Cloud
+    setup this assumes is already done.
     """
-    from honestapply.email.gmail import GmailUnavailable, connect
+    import sys
 
-    try:
-        connect(interactive=True)
-    except GmailUnavailable as exc:
-        console.print(str(exc), style="red", markup=False)
-        raise typer.Exit(1)
     s = get_settings()
-    console.print(f"[green]✓ Gmail connected.[/green] Token saved to {s.gmail_token_file}")
-    console.print(f"Scopes granted: {', '.join(s.gmail_scopes)}")
-    console.print("Next: run [cyan]honestapply inbox[/cyan] to sync recruiter emails into your tracker.")
+    server = s.gmail_mcp_server_name
+    claude_bin = shutil.which("claude")
+    if not claude_bin:
+        console.print(
+            "The `claude` CLI is not on PATH. Install Claude Code first — the inbox "
+            "reads Gmail through it over MCP.",
+            style="red", markup=False,
+        )
+        raise typer.Exit(1)
+
+    def _is_connected() -> bool:
+        try:
+            out = subprocess.run(
+                [claude_bin, "mcp", "list"], capture_output=True, text=True, timeout=30
+            ).stdout.lower()
+        except Exception:  # pragma: no cover
+            return False
+        return server in out and "fail" not in out.split(server, 1)[1][:40]
+
+    if _is_connected():
+        console.print(f"[green]✓ Gmail MCP ('{server}') already connected.[/green]")
+        console.print("Run [cyan]honestapply inbox[/cyan] to sync recruiter emails into your tracker.")
+        return
+
+    console.print(f"Authorizing the Gmail MCP server ('{server}') in Claude Code.\n")
+    console.print("In the Claude Code session about to open:")
+    console.print("  1. type [cyan]/mcp[/cyan] and press Enter")
+    console.print(f"  2. choose [cyan]{server}[/cyan] → Authenticate")
+    console.print("  3. approve access in the browser window that opens")
+    console.print("  4. type [cyan]/exit[/cyan] to come back here\n")
+
+    if sys.stdout.isatty():
+        # Hand the terminal to an interactive claude session so the user can run
+        # /mcp and authenticate. Project-scoped .mcp.json servers are also offered
+        # for approval on this first run.
+        subprocess.run([claude_bin], check=False)
+        if _is_connected():
+            console.print(f"\n[green]✓ Gmail MCP ('{server}') connected.[/green]")
+            console.print("Next: [cyan]honestapply inbox[/cyan] to sync recruiter emails into your tracker.")
+        else:
+            console.print(
+                f"\nGmail MCP ('{server}') still shows as not connected. Re-run "
+                "[cyan]honestapply gmail-connect[/cyan], or check [cyan]honestapply doctor[/cyan].",
+                style="yellow",
+            )
+    else:
+        console.print(
+            "Not a TTY — run [cyan]claude[/cyan] yourself, then [cyan]/mcp[/cyan] to authenticate "
+            f"'{server}'.",
+            style="yellow",
+        )
 
 
 @app.command()
@@ -436,16 +485,17 @@ def inbox(
 ) -> None:
     """Sync recruiter/ATS emails from Gmail into the tracker. → email.sync.run_inbox()
 
-    Matches new emails to the jobs you have applied to, classifies them, and
-    updates status (attributed to source='email' in job_events). Conservative:
-    a job only moves on a confident, clear match, and never backwards.
+    A `claude` agent reads Gmail over MCP and classifies each message; honestapply
+    then matches it to the jobs you've applied to and updates status (attributed
+    to source='email' in job_events). Conservative: a job only moves on a
+    confident, clear match that names the company, and never backwards.
     """
-    from honestapply.email.gmail import GmailUnavailable
+    from honestapply.email.agent import InboxAgentError
     from honestapply.email.sync import run_inbox
 
     try:
         r = run_inbox(lookback_days=days, max_results=max_results, min_confidence=min_confidence)
-    except GmailUnavailable as exc:
+    except InboxAgentError as exc:
         console.print(str(exc), style="red", markup=False)
         raise typer.Exit(1)
     console.print(

@@ -112,9 +112,6 @@ class StubProvider(LLMProvider):
         temperature: float = 0.2,
     ) -> str:
         p = prompt.lower()
-        if "classify a recruiting email" in p or "event_type" in p:
-            # Deterministic, safe default: match nothing, change nothing.
-            return json.dumps({"job_id": None, "event_type": "other", "confidence": 0})
         if "return only valid json" in p and "score" in p:
             return json.dumps(
                 {

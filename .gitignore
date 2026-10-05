@@ -19,8 +19,10 @@ config/*
 .env*
 !.env.example
 
-# Gmail OAuth: client secrets and the minted token are bearer credentials.
-# (config/* is already denied above; these are belt-and-braces for any path.)
+# Gmail: honestapply itself stores no Gmail credentials (the inbox reads Gmail
+# over MCP — see docs/GMAIL_SETUP.md — and the MCP client owns the OAuth token).
+# These patterns are belt-and-braces in case a local Gmail MCP server mints a
+# token/secret file anywhere under the repo — never commit bearer credentials.
 gmail_credentials.json
 gmail_token.json
 *gmail*token*.json

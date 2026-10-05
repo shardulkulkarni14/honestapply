@@ -62,15 +62,13 @@ class Settings(BaseSettings):
     honestapply_db_path: str = "data/honestapply.db"
     honestapply_browser_profile: str = "~/.honestapply/browser-profile"
 
-    # --- Gmail inbox sync (optional; requires the `[gmail]` extra) -------------
-    # OAuth client secrets you download from Google Cloud (gitignored under
-    # config/), and the per-user token minted on first `gmail-connect` (stored
-    # outside the repo, in ~/.honestapply). Scope defaults to read-only — the
-    # least privilege that lets the inbox classify status; "compose" additionally
-    # permits drafting replies (Google couples drafts with send, so it is opt-in).
-    gmail_credentials_path: str = "config/gmail_credentials.json"
-    gmail_token_path: str = "~/.honestapply/gmail_token.json"
-    gmail_scope_level: Literal["readonly", "compose"] = "readonly"
+    # --- Gmail inbox sync (optional; MCP-based, no Python deps) ----------------
+    # The inbox stage reads Gmail through an MCP server (see `.mcp.json`) that a
+    # spawned `claude` agent talks to — there is no Gmail API client here, and no
+    # OAuth token stored by honestapply (the MCP client owns auth). This is the
+    # name of that server as it appears in `.mcp.json`; `honestapply doctor`
+    # checks it is configured and connected.
+    gmail_mcp_server_name: str = "gmail"
     honestapply_inbox_lookback_days: int = 30
     # A classified email only moves a job when the model's confidence (0-100) is
     # at least this high; below it the email is recorded but changes nothing.
@@ -141,22 +139,6 @@ class Settings(BaseSettings):
     @property
     def browser_profile_dir(self) -> Path:
         return Path(os.path.expanduser(self.honestapply_browser_profile)).resolve()
-
-    @property
-    def gmail_credentials_file(self) -> Path:
-        return Path(os.path.expanduser(self.gmail_credentials_path)).resolve()
-
-    @property
-    def gmail_token_file(self) -> Path:
-        return Path(os.path.expanduser(self.gmail_token_path)).resolve()
-
-    @property
-    def gmail_scopes(self) -> list[str]:
-        """OAuth scopes for the configured level — least privilege first."""
-        scopes = ["https://www.googleapis.com/auth/gmail.readonly"]
-        if self.gmail_scope_level == "compose":
-            scopes.append("https://www.googleapis.com/auth/gmail.compose")
-        return scopes
 
     def api_key_for(self, provider: str | None = None) -> str | None:
         provider = provider or self.llm_provider

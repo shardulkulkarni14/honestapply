@@ -7,6 +7,10 @@
         "@playwright/mcp@latest"
       ],
       "env": {}
+    },
+    "gmail": {
+      "type": "http",
+      "url": "https://gmailmcp.googleapis.com/mcp/v1"
     }
   }
 }

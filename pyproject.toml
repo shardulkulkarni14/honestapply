@@ -51,19 +51,16 @@ dashboard = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
 ]
-# Optional — Gmail inbox sync (`honestapply gmail-connect` / `inbox`)
-gmail = [
-    "google-api-python-client>=2.100",
-    "google-auth-httplib2>=0.2",
-    "google-auth-oauthlib>=1.2",
-]
+# Gmail inbox sync (`honestapply gmail-connect` / `inbox`) needs no Python deps:
+# it reads Gmail through an MCP server a spawned `claude` talks to (see .mcp.json
+# and docs/GMAIL_SETUP.md), not the Gmail REST API.
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
     "ruff==0.16.1",
 ]
 all = [
-    "honestapply[resume,discover,llm,dashboard,gmail,dev]",
+    "honestapply[resume,discover,llm,dashboard,dev]",
 ]
 
 [project.scripts]
