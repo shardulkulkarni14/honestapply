@@ -125,6 +125,7 @@ def doctor() -> None:
         ("python-jobspy (discover)", "jobspy", False),
         ("Streamlit (dashboard)", "streamlit", False),
         ("anthropic SDK (llm)", "anthropic", False),
+        ("Gmail API (inbox)", "googleapiclient", False),
     ]:
         ok = importable(mod)
         row(label, ok if (required or ok) else None,
@@ -175,6 +176,14 @@ def doctor() -> None:
         row("Database writable", True, str(settings.db_path))
     except Exception as exc:
         row("Database writable", False, str(exc))
+
+    # Gmail inbox sync (optional): is it connected?
+    if settings.gmail_token_file.exists():
+        row("Gmail (inbox)", True, f"connected — token at {settings.gmail_token_file}")
+    elif settings.gmail_credentials_file.exists():
+        row("Gmail (inbox)", None, "client set up; not connected — run: honestapply gmail-connect")
+    else:
+        row("Gmail (inbox)", None, "optional — see docs/GMAIL_SETUP.md to enable")
 
     console.print(table)
 
@@ -396,6 +405,53 @@ def apply_packet(
 
     n = run_manual_assist(ids=_parse_ids(ids), limit=limit)
     console.print(f"[green]Built {n} manual-assist packet(s) → data/outputs/<id>/apply_packet.md[/green]")
+
+
+@app.command(name="gmail-connect")
+def gmail_connect() -> None:
+    """Connect your Gmail account (one-time OAuth) for inbox sync. → email.gmail.connect()
+
+    Opens a browser for Google's consent screen, then saves a token locally
+    (outside the repo). Needs the `[gmail]` extra and an OAuth client JSON at
+    config/gmail_credentials.json — see docs/GMAIL_SETUP.md.
+    """
+    from honestapply.email.gmail import GmailUnavailable, connect
+
+    try:
+        connect(interactive=True)
+    except GmailUnavailable as exc:
+        console.print(str(exc), style="red", markup=False)
+        raise typer.Exit(1)
+    s = get_settings()
+    console.print(f"[green]✓ Gmail connected.[/green] Token saved to {s.gmail_token_file}")
+    console.print(f"Scopes granted: {', '.join(s.gmail_scopes)}")
+    console.print("Next: run [cyan]honestapply inbox[/cyan] to sync recruiter emails into your tracker.")
+
+
+@app.command()
+def inbox(
+    days: int = typer.Option(None, "--days", help="Look back this many days (default: HONESTAPPLY_INBOX_LOOKBACK_DAYS)."),
+    max_results: int = typer.Option(100, "--max", help="Max messages to scan this run."),
+    min_confidence: int = typer.Option(None, help="Only move a job at/above this 0-100 confidence."),
+) -> None:
+    """Sync recruiter/ATS emails from Gmail into the tracker. → email.sync.run_inbox()
+
+    Matches new emails to the jobs you have applied to, classifies them, and
+    updates status (attributed to source='email' in job_events). Conservative:
+    a job only moves on a confident, clear match, and never backwards.
+    """
+    from honestapply.email.gmail import GmailUnavailable
+    from honestapply.email.sync import run_inbox
+
+    try:
+        r = run_inbox(lookback_days=days, max_results=max_results, min_confidence=min_confidence)
+    except GmailUnavailable as exc:
+        console.print(str(exc), style="red", markup=False)
+        raise typer.Exit(1)
+    console.print(
+        f"[green]Inbox: scanned {r['scanned']} new email(s), matched {r['matched']}, "
+        f"updated {r['updated']} job status(es).[/green]"
+    )
 
 
 @app.command()

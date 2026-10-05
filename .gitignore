@@ -19,6 +19,12 @@ config/*
 .env*
 !.env.example
 
+# Gmail OAuth: client secrets and the minted token are bearer credentials.
+# (config/* is already denied above; these are belt-and-braces for any path.)
+gmail_credentials.json
+gmail_token.json
+*gmail*token*.json
+
 # Personal documents and artifacts, anywhere in the tree
 *.pdf
 *.docx

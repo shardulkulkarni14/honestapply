@@ -51,13 +51,19 @@ dashboard = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
 ]
+# Optional — Gmail inbox sync (`honestapply gmail-connect` / `inbox`)
+gmail = [
+    "google-api-python-client>=2.100",
+    "google-auth-httplib2>=0.2",
+    "google-auth-oauthlib>=1.2",
+]
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
     "ruff==0.16.1",
 ]
 all = [
-    "honestapply[resume,discover,llm,dashboard,dev]",
+    "honestapply[resume,discover,llm,dashboard,gmail,dev]",
 ]
 
 [project.scripts]
