@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # Where the local server keeps its OAuth client keys + minted token.
     gmail_mcp_config_dir: str = "~/.gmail-mcp"
     honestapply_inbox_lookback_days: int = 30
+    # Cap how many applied/tracked jobs are offered to the triage agent as match
+    # candidates, most-recently-updated first. Inbound mail is almost always about
+    # a recent application, and an unbounded list (hundreds of old jobs) bloats the
+    # prompt and muddies matching. Raise it if you want older jobs considered.
+    honestapply_inbox_max_candidates: int = 200
     # A classified email only moves a job when the model's confidence (0-100) is
     # at least this high; below it the email is recorded but changes nothing.
     honestapply_inbox_min_confidence: int = 70

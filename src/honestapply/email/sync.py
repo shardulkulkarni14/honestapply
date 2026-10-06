@@ -70,6 +70,12 @@ _EVENT_STATUS = {
 # allowed from any state.
 _RANK = {Status.APPLIED: 1, Status.SCREENING: 2, Status.INTERVIEWING: 3, Status.OFFER: 4}
 
+# Final outcomes: once here, a *progress* email (e.g. a stale "application
+# received" ack that arrives after the rejection) must not resurrect the job.
+# Only another terminal event (rejection<->offer) can change it. GHOSTED is
+# deliberately NOT terminal — a reply after silence legitimately un-ghosts a job.
+_TERMINAL = {Status.REJECTED, Status.OFFER}
+
 _LEGAL_SUFFIXES = re.compile(
     r"\b(gmbh|mbh|inc|inc\.|llc|ltd|ltd\.|limited|ag|se|plc|co|corp|corporation|"
     r"pvt|private|technologies|technology|labs|group|holdings)\b",
@@ -108,8 +114,11 @@ def _decide_status(current: str, event_type: str) -> str | None:
         return None
     if event_type in ("rejection", "offer"):
         return target
-    # Progress events: only move forward through applied -> screening ->
-    # interviewing -> offer. A needs_human job counts as pre-progress (rank 0).
+    # Progress events never resurrect a final outcome (rejected/offer).
+    if current in _TERMINAL:
+        return None
+    # Otherwise only move forward through applied -> screening -> interviewing ->
+    # offer. A needs_human / ghosted job counts as pre-progress (rank 0).
     cur_rank = _RANK.get(current, 0)
     if _RANK.get(target, 0) > cur_rank:
         return target
@@ -145,6 +154,7 @@ def run_inbox(
     lookback_days: int | None = None,
     max_results: int = 100,
     min_confidence: int | None = None,
+    max_candidates: int | None = None,
     agent_runner: AgentRunner | None = None,
 ) -> dict[str, int]:
     """Sync Gmail into the tracker via the triage agent. Returns a counts summary.
@@ -160,15 +170,23 @@ def run_inbox(
     min_confidence = (
         min_confidence if min_confidence is not None else settings.honestapply_inbox_min_confidence
     )
+    max_candidates = (
+        max_candidates if max_candidates is not None else settings.honestapply_inbox_max_candidates
+    )
     agent_runner = agent_runner or default_runner()
 
     counts = {"scanned": 0, "matched": 0, "updated": 0, "recorded": 0}
 
-    # 1. Shortlist candidate jobs + the message ids already ingested.
+    # 1. Shortlist candidate jobs + the message ids already ingested. Cap to the
+    # most-recently-updated tracked jobs: inbound mail is almost always about a
+    # recent application, and an unbounded list bloats the prompt.
     with session_scope() as s:
         candidates = list(
             s.execute(
-                select(Job).where(Job.status.in_(_TRACKED_STATES)).order_by(Job.updated_at.desc())
+                select(Job)
+                .where(Job.status.in_(_TRACKED_STATES))
+                .order_by(Job.updated_at.desc())
+                .limit(max_candidates)
             ).scalars()
         )
         company_by_id = {j.id: j.company for j in candidates}

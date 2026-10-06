@@ -138,6 +138,14 @@ def test_decide_status_never_regresses_and_terminals_win():
     # terminals allowed from any state
     assert sync_mod._decide_status(Status.INTERVIEWING, "rejection") == Status.REJECTED
     assert sync_mod._decide_status(Status.APPLIED, "offer") == Status.OFFER
+    # a final outcome is NOT resurrected by a later progress email
+    assert sync_mod._decide_status(Status.REJECTED, "application_received") is None
+    assert sync_mod._decide_status(Status.REJECTED, "interview_invite") is None
+    assert sync_mod._decide_status(Status.OFFER, "application_received") is None
+    # but rejected <-> offer (terminal to terminal) is still allowed
+    assert sync_mod._decide_status(Status.REJECTED, "offer") == Status.OFFER
+    # ghosted is NOT terminal — a reply after silence un-ghosts the job
+    assert sync_mod._decide_status(Status.GHOSTED, "interview_invite") == Status.INTERVIEWING
     # unknown / info_request -> nothing
     assert sync_mod._decide_status(Status.APPLIED, "info_request") is None
 
