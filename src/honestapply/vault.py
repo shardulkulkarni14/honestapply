@@ -264,7 +264,8 @@ def get_vault(
     config_dir: Path | str | None = None,
 ) -> Vault:
     """Open the vault with the configured/auto-detected backend."""
-    cfg = Path(os.path.expanduser(str(config_dir or "~/.honestapply")))
+    cfg_src = config_dir or os.environ.get("HONESTAPPLY_VAULT_DIR") or "~/.honestapply"
+    cfg = Path(os.path.expanduser(str(cfg_src)))
     cfg.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(cfg, 0o700)
