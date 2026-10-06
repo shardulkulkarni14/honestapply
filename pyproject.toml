@@ -54,13 +54,21 @@ dashboard = [
 # Gmail inbox sync (`honestapply gmail-connect` / `inbox`) needs no Python deps:
 # it reads Gmail through an MCP server a spawned `claude` talks to (see .mcp.json
 # and docs/GMAIL_SETUP.md), not the Gmail REST API.
+# Optional — apply-stage account auto-signup: a local secrets vault for per-site
+# passwords. `keyring` uses the OS secret store (macOS Keychain / Windows Cred
+# Manager / Linux Secret Service); `cryptography` backs the encrypted-file vault
+# used on headless servers / CI. See docs/ACCOUNTS.md.
+accounts = [
+    "keyring>=25.0",
+    "cryptography>=42.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
     "ruff==0.16.1",
 ]
 all = [
-    "honestapply[resume,discover,llm,dashboard,dev]",
+    "honestapply[resume,discover,llm,dashboard,accounts,dev]",
 ]
 
 [project.scripts]
