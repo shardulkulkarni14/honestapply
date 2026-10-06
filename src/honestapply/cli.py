@@ -169,8 +169,16 @@ def doctor() -> None:
 
     _mcp_row("Playwright MCP (apply)", "playwright",
              "run: claude mcp add playwright -- npx @playwright/mcp@latest")
-    _mcp_row("Gmail MCP (inbox)", settings.gmail_mcp_server_name,
-             "run: honestapply gmail-connect (see docs/GMAIL_SETUP.md)")
+
+    # Gmail inbox: the local MCP server is honestapply-owned, so its health is the
+    # local token file, not `claude mcp list` (which reflects the Claude account).
+    if settings.gmail_mcp_credentials_file.exists():
+        row("Gmail MCP (inbox)", True,
+            f"connected — token at {settings.gmail_mcp_credentials_file} (scopes: {settings.gmail_mcp_scopes})")
+    elif settings.gmail_mcp_oauth_keys_file.exists():
+        row("Gmail MCP (inbox)", None, "client keys set up; not connected — run: honestapply gmail-connect")
+    else:
+        row("Gmail MCP (inbox)", None, "optional — see docs/GMAIL_SETUP.md to enable")
 
     # Chrome / Chromium
     chrome_paths = [
@@ -413,68 +421,63 @@ def apply_packet(
 
 @app.command(name="gmail-connect")
 def gmail_connect() -> None:
-    """Connect Gmail for inbox sync by authorizing the Gmail MCP server.
+    """Connect Gmail for inbox sync (one-time, honestapply-owned OAuth).
 
-    The inbox stage reads Gmail over MCP (see `.mcp.json`), so "connecting" means
-    authorizing that MCP server in Claude Code once — a browser opens for Google's
-    consent screen and Claude Code stores the token. honestapply keeps no Gmail
-    credentials of its own. See docs/GMAIL_SETUP.md for the one-time Google Cloud
-    setup this assumes is already done.
+    The inbox reads Gmail through a local Gmail MCP server (see `.mcp.json`). This
+    runs that server's one-time auth with least-privilege scopes: a browser opens
+    for Google's consent screen, and the token is written to a LOCAL file
+    (default ~/.gmail-mcp/credentials.json, chmod 600) that belongs to this
+    install — not to any Claude account. Requires the OAuth client keys at
+    gcp-oauth.keys.json first; see docs/GMAIL_SETUP.md for the Google Cloud setup.
     """
-    import sys
-
     s = get_settings()
-    server = s.gmail_mcp_server_name
-    claude_bin = shutil.which("claude")
-    if not claude_bin:
+
+    if not shutil.which("npx"):
         console.print(
-            "The `claude` CLI is not on PATH. Install Claude Code first — the inbox "
-            "reads Gmail through it over MCP.",
+            "`npx` (Node.js) is not on PATH. The local Gmail MCP server runs via "
+            "npx — install Node.js 22+ first.",
             style="red", markup=False,
         )
         raise typer.Exit(1)
 
-    def _is_connected() -> bool:
-        try:
-            out = subprocess.run(
-                [claude_bin, "mcp", "list"], capture_output=True, text=True, timeout=30
-            ).stdout.lower()
-        except Exception:  # pragma: no cover
-            return False
-        return server in out and "fail" not in out.split(server, 1)[1][:40]
+    keys = s.gmail_mcp_oauth_keys_file
+    if not keys.exists():
+        console.print(
+            f"Missing OAuth client keys at {keys}.\n"
+            "Create a Google OAuth client (Desktop app, or Web app with redirect "
+            "http://localhost:3000/oauth2callback), download its JSON, and save it "
+            f"there as gcp-oauth.keys.json. See docs/GMAIL_SETUP.md.",
+            style="red", markup=False,
+        )
+        raise typer.Exit(1)
 
-    if _is_connected():
-        console.print(f"[green]✓ Gmail MCP ('{server}') already connected.[/green]")
+    if s.gmail_mcp_credentials_file.exists():
+        console.print(f"[green]✓ Gmail already connected.[/green] Token at {s.gmail_mcp_credentials_file}")
         console.print("Run [cyan]honestapply inbox[/cyan] to sync recruiter emails into your tracker.")
         return
 
-    console.print(f"Authorizing the Gmail MCP server ('{server}') in Claude Code.\n")
-    console.print("In the Claude Code session about to open:")
-    console.print("  1. type [cyan]/mcp[/cyan] and press Enter")
-    console.print(f"  2. choose [cyan]{server}[/cyan] → Authenticate")
-    console.print("  3. approve access in the browser window that opens")
-    console.print("  4. type [cyan]/exit[/cyan] to come back here\n")
+    # Hand off to the server's own auth command. It opens a browser, runs Google's
+    # consent flow with ONLY the scopes we pass, and writes the token locally.
+    scope_args = [f"--scopes={scope}" for scope in s.gmail_mcp_scopes.split()]
+    console.print(
+        f"Authorizing Gmail (scopes: {s.gmail_mcp_scopes}) — a browser will open. "
+        f"Sign in and approve.\n"
+    )
+    proc = subprocess.run(
+        ["npx", "-y", s.gmail_mcp_package, "auth", *scope_args], check=False
+    )
 
-    if sys.stdout.isatty():
-        # Hand the terminal to an interactive claude session so the user can run
-        # /mcp and authenticate. Project-scoped .mcp.json servers are also offered
-        # for approval on this first run.
-        subprocess.run([claude_bin], check=False)
-        if _is_connected():
-            console.print(f"\n[green]✓ Gmail MCP ('{server}') connected.[/green]")
-            console.print("Next: [cyan]honestapply inbox[/cyan] to sync recruiter emails into your tracker.")
-        else:
-            console.print(
-                f"\nGmail MCP ('{server}') still shows as not connected. Re-run "
-                "[cyan]honestapply gmail-connect[/cyan], or check [cyan]honestapply doctor[/cyan].",
-                style="yellow",
-            )
+    if proc.returncode == 0 and s.gmail_mcp_credentials_file.exists():
+        console.print(f"\n[green]✓ Gmail connected.[/green] Token saved to {s.gmail_mcp_credentials_file}")
+        console.print(f"Scopes: {s.gmail_mcp_scopes} (read-only — no send/modify tools are exposed).")
+        console.print("Next: [cyan]honestapply inbox[/cyan] to sync recruiter emails into your tracker.")
     else:
         console.print(
-            "Not a TTY — run [cyan]claude[/cyan] yourself, then [cyan]/mcp[/cyan] to authenticate "
-            f"'{server}'.",
+            "\nAuth didn't complete (no token file written). Re-run "
+            "[cyan]honestapply gmail-connect[/cyan], or check [cyan]honestapply doctor[/cyan].",
             style="yellow",
         )
+        raise typer.Exit(1)
 
 
 @app.command()

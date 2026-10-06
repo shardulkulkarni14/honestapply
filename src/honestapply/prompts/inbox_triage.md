@@ -6,10 +6,17 @@ you do **not** send or reply to anything — you only read and report.
 
 ## Tools
 
-You have a **Gmail MCP server** connected. Use its tool calls to do the work —
-typically `search_threads` to find candidate mail and `get_thread` to read a
-specific thread. Do not try to reach Gmail any other way. If the Gmail tools are
-not available or not authorized, stop and emit the empty result (see below).
+Use **only honestapply's own Gmail MCP server — the one named `gmail`** (its tools
+are prefixed `mcp__gmail__…`). Do **not** use any account-tied or built-in Gmail
+connector (e.g. a `claude_ai`/managed Gmail), even if one is available — this run
+must go through honestapply's own read-only connection.
+
+Use that server's search and read tools — typically something like
+`search_messages` / `list_inbox_threads` to find candidate mail and `get_thread` /
+`read_email` to read one (use whatever read tools the `gmail` server actually
+exposes). The server is authorized **read-only**, so no send/modify tools exist —
+that's expected. If the `gmail` tools are not available or not authorized, stop
+and emit the empty result (see below).
 
 ## The jobs this is about
 

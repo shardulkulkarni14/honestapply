@@ -9,8 +9,13 @@
       "env": {}
     },
     "gmail": {
-      "type": "http",
-      "url": "https://gmailmcp.googleapis.com/mcp/v1"
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@klodr/gmail-mcp"
+      ],
+      "env": {}
     }
   }
 }
