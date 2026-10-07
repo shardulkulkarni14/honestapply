@@ -46,6 +46,21 @@
   .btn{border:1px solid var(--border);background:var(--surface);color:var(--ink);
     padding:7px 12px;border-radius:10px;font-size:13px;cursor:pointer;font-family:inherit}
   .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn:disabled{opacity:.5;cursor:default;border-color:var(--border);color:var(--ink-2)}
+  /* run bar */
+  .runbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .runbtns{display:flex;gap:8px;flex-wrap:wrap}
+  .btn.run{font-weight:600}
+  .runstatus{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);
+    border-radius:10px;padding:6px 12px;font-size:13px;box-shadow:var(--shadow)}
+  .runstatus[hidden]{display:none}
+  .spin{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);
+    border-radius:50%;animation:spin 1s linear infinite;flex:0 0 auto}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .logln{color:var(--muted);font-family:var(--mono);font-size:11px;max-width:420px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .btn.stop{color:var(--critical);border-color:color-mix(in srgb,var(--critical) 40%,transparent)}
+  body.present .runbar{display:none}
   /* KPI tiles */
   .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
   .tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
@@ -136,6 +151,16 @@
     <button class="btn" onclick="togglePresent()" id="presentBtn">🙈 Present</button>
     <button class="btn" onclick="refreshAll()">↻ Refresh</button>
   </header>
+
+  <!-- run control -->
+  <section class="runbar">
+    <div class="runbtns">
+      <button class="btn run" onclick="startRun('discover')">🔎 Find jobs</button>
+      <button class="btn run" onclick="startRun('prepare')">⚙️ Prepare</button>
+      <button class="btn run" onclick="startRun('apply_dry')" title="Dry-run: fills forms but never submits">📝 Apply (dry-run)</button>
+    </div>
+    <div class="runstatus" id="runstatus" hidden></div>
+  </section>
 
   <!-- headline numbers -->
   <section class="kpis" id="kpis"></section>
@@ -323,12 +348,50 @@ function togglePresent(){
 }
 function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),1600); }
+// --- run control -----------------------------------------------------------
+const STAGE_LABEL = {discover:'Finding jobs', prepare:'Preparing', apply_dry:'Applying (dry-run)'};
+let runPoll = null;
+async function startRun(stage){
+  try{
+    const r = await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage})});
+    if(r.status===409){ toast('A run is already in progress'); return; }
+    if(!r.ok){ toast('Could not start the run'); return; }
+    toast('Started: '+(STAGE_LABEL[stage]||stage)); pollRun();
+  }catch(e){ toast('Could not start the run'); }
+}
+async function stopRun(){ try{ await fetch('/api/run/stop',{method:'POST'}); }catch(e){} pollRun(); }
+function renderRun(s){
+  const el = document.getElementById('runstatus');
+  document.querySelectorAll('.btn.run').forEach(b=>b.disabled = s.running);
+  if(s.running){
+    const last = (s.log && s.log.length) ? s.log[s.log.length-1] : 'starting…';
+    el.hidden=false;
+    el.innerHTML = `<span class="spin"></span><b>${esc(STAGE_LABEL[s.stage]||s.stage)}…</b>`
+      + `<span class="logln">${esc(last)}</span>`
+      + `<button class="btn stop" onclick="stopRun()">Stop</button>`;
+  }else{
+    if(el.dataset.was==='1'){ toast(s.returncode===0?'Run finished ✓':'Run ended'); refreshAll(); }
+    el.hidden=true; el.innerHTML='';
+  }
+  el.dataset.was = s.running?'1':'';
+}
+async function pollRun(){
+  try{ renderRun(await (await fetch('/api/run')).json()); }catch(e){ return; }
+  if(runPoll){ clearInterval(runPoll); runPoll=null; }
+  runPoll = setInterval(async ()=>{
+    let s; try{ s = await (await fetch('/api/run')).json(); }catch(e){ return; }
+    renderRun(s);
+    if(!s.running){ clearInterval(runPoll); runPoll=null; }
+  }, 3000);
+}
+
 async function refreshAll(){
   await Promise.all([loadFunnel(), loadFeed(), loadTable()]);
 }
 try{ if(localStorage.getItem('ha_present')) togglePresent(); }catch(e){}
 if(new URLSearchParams(location.search).get('present')==='1' && !document.body.classList.contains('present')) togglePresent();
 refreshAll();
+pollRun();
 setInterval(()=>{ loadFunnel(); loadFeed(); loadTable(); }, 15000);
 </script>
 </body>

@@ -14,7 +14,10 @@ Run via `honestapply dashboard` (uvicorn, default port 8501).
 from __future__ import annotations
 
 import re
-from datetime import datetime
+import subprocess
+import threading
+from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -239,6 +242,103 @@ def funnel() -> dict:
         for k, lbl, sts, tone in _OUTCOMES
     ]
     return {"total": total, "stages": stages, "outcomes": outcomes, "by_status": by_status}
+
+
+# ---------------------------------------------------------------------------
+# Run control (Phase 2): start a pipeline stage as a background subprocess and
+# watch progress. Single-run only (apply is never parallel). Real submissions are
+# NOT triggerable here — the UI offers discover / prepare / apply-DRY-RUN only;
+# real applies stay on the CLI behind their confirm-first rule.
+# ---------------------------------------------------------------------------
+_RUN_STAGES = {
+    "discover": ["honestapply", "discover"],
+    "prepare": ["honestapply", "run"],
+    "apply_dry": ["honestapply", "apply", "--dry-run"],
+}
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+class _Runner:
+    def __init__(self) -> None:
+        self._proc: subprocess.Popen | None = None
+        self._stage: str | None = None
+        self._started: str | None = None
+        self._rc: int | None = None
+        self._lines: deque[str] = deque(maxlen=60)
+        self._lock = threading.Lock()
+
+    @property
+    def _running(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    def status(self) -> dict:
+        return {
+            "running": self._running,
+            "stage": self._stage,
+            "started_at": self._started,
+            "returncode": None if self._running else self._rc,
+            "log": list(self._lines)[-10:],
+        }
+
+    def start(self, stage: str) -> None:
+        if stage not in _RUN_STAGES:
+            raise ValueError(f"unknown stage {stage!r}")
+        with self._lock:
+            if self._running:
+                raise RuntimeError("a run is already in progress")
+            self._lines.clear()
+            self._stage, self._rc = stage, None
+            self._started = datetime.now(timezone.utc).isoformat()
+            self._proc = subprocess.Popen(  # noqa: S603 — fixed command set
+                _RUN_STAGES[stage],
+                cwd=str(ROOT),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            threading.Thread(target=self._pump, daemon=True).start()
+
+    def _pump(self) -> None:
+        assert self._proc is not None and self._proc.stdout is not None
+        for raw in self._proc.stdout:
+            line = _ANSI_RE.sub("", raw).rstrip()
+            if line:
+                self._lines.append(line[:300])
+        self._rc = self._proc.wait()
+
+    def stop(self) -> None:
+        if self._running and self._proc is not None:
+            self._proc.terminate()
+
+
+_RUNNER = _Runner()
+
+
+class RunReq(BaseModel):
+    stage: str
+
+
+@app.get("/api/run")
+def run_status() -> dict:
+    return _RUNNER.status()
+
+
+@app.post("/api/run")
+def run_start(req: RunReq) -> dict:
+    try:
+        _RUNNER.start(req.stage)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _RUNNER.status()
+
+
+@app.post("/api/run/stop")
+def run_stop() -> dict:
+    _RUNNER.stop()
+    return _RUNNER.status()
 
 
 @app.get("/api/activity")
