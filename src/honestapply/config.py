@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     gmail_mcp_scopes: str = "gmail.readonly"
     # Where the local server keeps its OAuth client keys + minted token.
     gmail_mcp_config_dir: str = "~/.gmail-mcp"
+    # Apply-stage account auto-signup (opt-in, OFF by default). When enabled, an
+    # account-walled ATS is NOT routed to needs_human: the apply agent creates an
+    # account (email + a vault-managed password it never sees) and verifies via
+    # Gmail, behind the same dry-run/cap guards. See docs/ACCOUNTS.md.
+    honestapply_enable_account_signup: bool = False
     honestapply_inbox_lookback_days: int = 30
     # Cap how many applied/tracked jobs are offered to the triage agent as match
     # candidates, most-recently-updated first. Inbound mail is almost always about

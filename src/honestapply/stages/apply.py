@@ -17,6 +17,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 import traceback
 from datetime import datetime, timedelta, timezone
@@ -115,6 +116,7 @@ def _build_instructions(
     job_id: int | str,
     ats_type: str,
     dry_run: bool,
+    account_signup: bool = False,
 ) -> tuple[str, Path]:
     """Render apply_browser.md with per-job context. Returns (text, output_path)."""
     template = _load_prompt_template()
@@ -142,6 +144,7 @@ def _build_instructions(
         "job_url": job_url,
         "ats_type": ats_type,
         "dry_run": str(dry_run),
+        "account_signup": str(account_signup),
         "resume_pdf_path": str(resume_pdf.resolve()),
         "cover_letter_pdf_path": str(cover_letter_pdf.resolve()),
         "recommendation_pdf_path": rec_pdf,
@@ -175,18 +178,33 @@ def _mock_result(dry_run: bool, job_dir: Path) -> dict:
     }
 
 
-def _run_claude(instructions_text: str) -> dict:
-    """Invoke the claude CLI and parse the <<<RESULT>>> block from stdout."""
+def _run_claude(
+    instructions_text: str,
+    *,
+    mcp_config: str | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> dict:
+    """Invoke the claude CLI and parse the <<<RESULT>>> block from stdout.
+
+    *mcp_config*, when given, is passed as ``--mcp-config <path> --strict-mcp-config``
+    so the agent uses exactly that server set (used by account-signup to route the
+    browser through the secret-injection proxy). *extra_env* is merged into the
+    subprocess environment (e.g. the account site/email for the proxy)."""
     # Model for the browser-apply agent. Defaults to Opus 5; override with
     # HONESTAPPLY_APPLY_MODEL if needed.
     apply_model = os.environ.get("HONESTAPPLY_APPLY_MODEL", "claude-opus-5")
+    cmd = ["claude", "--dangerously-skip-permissions", "--model", apply_model]
+    if mcp_config:
+        cmd += ["--mcp-config", mcp_config, "--strict-mcp-config"]
+    cmd += ["-p", instructions_text]
+    env = {**os.environ, **extra_env} if extra_env else None
     try:
         proc = subprocess.run(
-            ["claude", "--dangerously-skip-permissions", "--model", apply_model,
-             "-p", instructions_text],
+            cmd,
             capture_output=True,
             text=True,
             timeout=600,
+            env=env,
         )
         stdout = proc.stdout or ""
     except subprocess.TimeoutExpired:
@@ -203,6 +221,42 @@ def _run_claude(instructions_text: str) -> dict:
         return json.loads(matches[-1])
     except json.JSONDecodeError as exc:
         return {"status": "failed", "reason": f"JSON parse error in result block: {exc}", "confirmation_text": "", "pre_submit_screenshot": "", "post_submit_screenshot": "", "_error_log": matches[-1]}
+
+
+def _write_signup_mcp_config(job_id: int | str) -> str:
+    """Write a per-run MCP config that routes the `playwright` server through the
+    secret-injection proxy (so the agent can fill an account password it never
+    sees), keeping every other server (e.g. `gmail` for email verification).
+    Returns the path to pass as --mcp-config."""
+    base = PATHS.root / ".mcp.json"
+    cfg = json.loads(base.read_text(encoding="utf-8")) if base.exists() else {}
+    servers = cfg.setdefault("mcpServers", {})
+    pw = servers.get("playwright")
+    if pw:
+        inner = [pw.get("command", "npx"), *pw.get("args", [])]
+        servers["playwright"] = {
+            "type": "stdio",
+            # sys.executable, not bare "python", so the proxy resolves to the env
+            # honestapply runs in regardless of the agent subprocess PATH.
+            "command": sys.executable,
+            "args": ["-m", "honestapply.secret_proxy", *inner],
+            "env": pw.get("env", {}),
+        }
+    out = PATHS.job_output_dir(job_id) / "signup_mcp.json"
+    out.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    return str(out)
+
+
+def _signup_env(job_url: str) -> dict[str, str]:
+    """Env for a signup run: the site key (for the vault/proxy) and the applicant
+    email the account is created under."""
+    from honestapply.vault import normalize_site
+
+    profile = load_profile()
+    return {
+        "HONESTAPPLY_ACCOUNT_SITE": normalize_site(job_url),
+        "HONESTAPPLY_ACCOUNT_EMAIL": profile.email or "",
+    }
 
 
 def _persist(
@@ -460,6 +514,10 @@ def _process_job(
     if not no_safety and processed_this_run < settings.honestapply_dry_run_first_n:
         effective_dry_run = True
 
+    # Set when an account-walled job is handled by auto-signup instead of being
+    # routed to a human (opt-in; see the ACCOUNT-WALLED guard below).
+    signup_mode = False
+
     # ── TRIPLE DEDUP ──────────────────────────────────────────────────────────
     # Only a *real, completed* submission blocks a re-apply. Earlier dry-run or
     # needs_human rows never actually submitted, so they must NOT block a later
@@ -546,15 +604,22 @@ def _process_job(
     from honestapply.ats.detect import is_account_walled
 
     if is_account_walled(ats_type):
-        reason = f"{ats_type} requires a portal account (no guest apply)"
-        log.warning("apply.account_walled_skip", job_id=job.id, reason=reason)
-        with session_scope() as s:
-            j = s.get(Job, job.id)
-            if j:
-                j.status = Status.NEEDS_HUMAN
-                j.status_reason = reason
-                s.add(Application(job_id=j.id, mode="dry_run", status="needs_human", error_log=reason))
-        return
+        if getattr(settings, "honestapply_enable_account_signup", False):
+            # Opt-in: don't bail to a human. Create an account (email + a
+            # vault-managed password the agent never sees) and continue through the
+            # normal dry-run/cap/rate-limit guards below, in signup mode.
+            signup_mode = True
+            log.info("apply.account_signup_enabled", job_id=job.id, ats_type=ats_type)
+        else:
+            reason = f"{ats_type} requires a portal account (no guest apply)"
+            log.warning("apply.account_walled_skip", job_id=job.id, reason=reason)
+            with session_scope() as s:
+                j = s.get(Job, job.id)
+                if j:
+                    j.status = Status.NEEDS_HUMAN
+                    j.status_reason = reason
+                    s.add(Application(job_id=j.id, mode="dry_run", status="needs_human", error_log=reason))
+            return
 
     if ats_type == "linkedin":
         if not enable_linkedin_easy_apply:
@@ -630,14 +695,24 @@ def _process_job(
         job_id=job.id,
         ats_type=ats_type,
         dry_run=effective_dry_run,
+        account_signup=signup_mode,
     )
-    log.info("apply.instructions_written", job_id=job.id, path=str(out_path))
+    log.info("apply.instructions_written", job_id=job.id, path=str(out_path), signup=signup_mode)
 
     # ── EXECUTE ───────────────────────────────────────────────────────────────
     job_dir = PATHS.job_output_dir(job.id)
 
     if _is_mock():
         result = _mock_result(effective_dry_run, job_dir)
+    elif signup_mode:
+        # Route the browser through the secret-injection proxy and tell the proxy
+        # which site's vault password to use. The agent fills `{{honestapply_password}}`;
+        # the proxy swaps in the real value and never lets the agent read it back.
+        result = _run_claude(
+            instructions_text,
+            mcp_config=_write_signup_mcp_config(job.id),
+            extra_env=_signup_env(job_url),
+        )
     else:
         result = _run_claude(instructions_text)
 

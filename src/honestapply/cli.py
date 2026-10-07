@@ -197,6 +197,19 @@ def doctor() -> None:
     except Exception as exc:
         row("Database writable", False, str(exc))
 
+    # Account auto-signup (opt-in): enabled? secret backend usable?
+    if getattr(settings, "honestapply_enable_account_signup", False):
+        try:
+            from honestapply.vault import _keyring_usable, get_vault
+
+            backend = "keyring" if _keyring_usable() else "encrypted file"
+            n = len(get_vault().list_sites())
+            row("Account signup", True, f"ENABLED · vault: {backend} · {n} saved account(s)")
+        except Exception as exc:  # pragma: no cover
+            row("Account signup", False, f"ENABLED but vault error: {exc}")
+    else:
+        row("Account signup", None, "disabled (default) — see docs/ACCOUNTS.md")
+
     console.print(table)
 
 
@@ -505,6 +518,60 @@ def inbox(
         f"[green]Inbox: scanned {r['scanned']} new email(s), matched {r['matched']}, "
         f"updated {r['updated']} job status(es).[/green]"
     )
+
+
+# --- Site-account credentials (apply-stage auto-signup) --------------------------
+accounts_app = typer.Typer(
+    help="Manage saved portal-account credentials. Passwords live in the OS keyring "
+    "or an encrypted vault and are NEVER printed — only site names/metadata are shown."
+)
+app.add_typer(accounts_app, name="accounts")
+
+
+@accounts_app.command("list")
+def accounts_list() -> None:
+    """List portal accounts honestapply manages (names/emails only — no passwords)."""
+    from honestapply.vault import get_vault
+
+    rows = get_vault().list_sites()
+    if not rows:
+        console.print("No saved portal accounts yet.")
+        return
+    table = Table(title="Saved portal accounts (passwords not shown)")
+    table.add_column("site")
+    table.add_column("email")
+    table.add_column("created")
+    table.add_column("last used")
+    for r in rows:
+        table.add_row(
+            r.get("site", ""),
+            r.get("email", ""),
+            (r.get("created_at", "") or "")[:10],
+            (r.get("last_used_at", "") or "")[:10],
+        )
+    console.print(table)
+
+
+@accounts_app.command("rotate")
+def accounts_rotate(site: str = typer.Argument(..., help="Site host, e.g. careers.acme.com")) -> None:
+    """Replace the stored password for a site with a fresh strong one."""
+    from honestapply.vault import get_vault
+
+    if get_vault().rotate(site):
+        console.print(f"[green]✓ Rotated the stored password for {site}.[/green]")
+    else:
+        console.print(f"No saved account for {site}.", style="yellow")
+
+
+@accounts_app.command("delete")
+def accounts_delete(site: str = typer.Argument(..., help="Site host, e.g. careers.acme.com")) -> None:
+    """Forget a site's stored credentials (removes the password and index entry)."""
+    from honestapply.vault import get_vault
+
+    if get_vault().delete(site):
+        console.print(f"[green]✓ Deleted the stored account for {site}.[/green]")
+    else:
+        console.print(f"No saved account for {site}.", style="yellow")
 
 
 @app.command()
