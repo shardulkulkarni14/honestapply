@@ -21,6 +21,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from sqlalchemy import func
 
 from honestapply.config import PATHS
 from honestapply.db.events import transition
@@ -196,6 +197,76 @@ def summary() -> dict:
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     return {"total": len(rows), "by_status": counts}
+
+
+# Plain-language pipeline stages (the funnel) and outcome buckets, each mapping to
+# a set of raw statuses. This is the non-technical "face" of the status taxonomy.
+_FUNNEL_STAGES = [
+    ("found", "Jobs found", ["discovered"]),
+    ("prepared", "Prepared", ["enriched", "scored", "tailored", "covered", "ready_to_apply"]),
+    ("applied", "Applied", ["applied", "dry_run_completed"]),
+    ("in_process", "In process", ["screening", "interviewing"]),
+    ("offer", "Offers", ["offer"]),
+]
+_OUTCOMES = [
+    ("offer", "Offers", ["offer"], "good"),
+    ("in_process", "In process", ["screening", "interviewing"], "info"),
+    ("needs_human", "Needs you", ["needs_human"], "warning"),
+    ("rejected", "Not selected", ["rejected"], "critical"),
+    ("ghosted", "No response", ["ghosted"], "muted"),
+    ("skipped", "Skipped", ["skipped_low_fit", "skipped_company_cap", "failed"], "muted"),
+]
+
+
+@app.get("/api/funnel")
+def funnel() -> dict:
+    """The pipeline as plain-language stages + outcome buckets, for the dashboard
+    face. Counts are of jobs currently in each status set."""
+    by_status: dict[str, int] = {}
+    with session_scope() as s:
+        for status, n in (
+            s.query(Job.status, func.count(Job.id)).group_by(Job.status).all()
+        ):
+            by_status[status] = n
+    total = sum(by_status.values())
+
+    def tally(statuses: list[str]) -> int:
+        return sum(by_status.get(st, 0) for st in statuses)
+
+    stages = [{"key": k, "label": lbl, "count": tally(sts)} for k, lbl, sts in _FUNNEL_STAGES]
+    outcomes = [
+        {"key": k, "label": lbl, "count": tally(sts), "tone": tone}
+        for k, lbl, sts, tone in _OUTCOMES
+    ]
+    return {"total": total, "stages": stages, "outcomes": outcomes, "by_status": by_status}
+
+
+@app.get("/api/activity")
+def activity(limit: int = 40) -> list[dict]:
+    """Recent status changes across all jobs, newest first — the live feed."""
+    limit = max(1, min(limit, 200))
+    out: list[dict] = []
+    with session_scope() as s:
+        q = (
+            s.query(JobEvent, Job)
+            .join(Job, Job.id == JobEvent.job_id)
+            .order_by(JobEvent.at.desc())
+            .limit(limit)
+        )
+        for ev, job in q.all():
+            out.append(
+                {
+                    "job_id": job.id,
+                    "company": job.company,
+                    "title": job.title,
+                    "from": ev.from_status,
+                    "to": ev.to_status,
+                    "source": ev.source,
+                    "note": ev.note,
+                    "at": ev.at.isoformat() if ev.at else None,
+                }
+            )
+    return out
 
 
 # ---------------------------------------------------------------------------
