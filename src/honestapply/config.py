@@ -62,6 +62,32 @@ class Settings(BaseSettings):
     honestapply_db_path: str = "data/honestapply.db"
     honestapply_browser_profile: str = "~/.honestapply/browser-profile"
 
+    # --- Gmail inbox sync (optional; MCP-based, honestapply-owned auth) --------
+    # The inbox stage reads Gmail through a *local* Gmail MCP server (see
+    # `.mcp.json`) that a spawned `claude` agent talks to via MCP tool calls —
+    # there is no Gmail API client in honestapply itself. The server authenticates
+    # with honestapply's OWN Google OAuth client and stores its token in a local
+    # file (default ~/.gmail-mcp), so the Gmail connection belongs to this install,
+    # independent of any Claude account. `gmail-connect` runs the server's one-time
+    # auth with least-privilege scopes; `doctor` checks the token file.
+    gmail_mcp_server_name: str = "gmail"
+    gmail_mcp_package: str = "@klodr/gmail-mcp"
+    # Space-separated Gmail scope short-names granted at auth time. Read-only is
+    # all the sync needs; the server filters its tool list to the granted scopes,
+    # so a readonly token never exposes send/modify tools to the agent.
+    gmail_mcp_scopes: str = "gmail.readonly"
+    # Where the local server keeps its OAuth client keys + minted token.
+    gmail_mcp_config_dir: str = "~/.gmail-mcp"
+    honestapply_inbox_lookback_days: int = 30
+    # Cap how many applied/tracked jobs are offered to the triage agent as match
+    # candidates, most-recently-updated first. Inbound mail is almost always about
+    # a recent application, and an unbounded list (hundreds of old jobs) bloats the
+    # prompt and muddies matching. Raise it if you want older jobs considered.
+    honestapply_inbox_max_candidates: int = 200
+    # A classified email only moves a job when the model's confidence (0-100) is
+    # at least this high; below it the email is recorded but changes nothing.
+    honestapply_inbox_min_confidence: int = 70
+
     # Safety knobs
     honestapply_rate_limit_seconds: int = 90
     honestapply_rate_limit_jitter_seconds: int = 30
@@ -127,6 +153,20 @@ class Settings(BaseSettings):
     @property
     def browser_profile_dir(self) -> Path:
         return Path(os.path.expanduser(self.honestapply_browser_profile)).resolve()
+
+    @property
+    def gmail_mcp_config_path(self) -> Path:
+        return Path(os.path.expanduser(self.gmail_mcp_config_dir)).resolve()
+
+    @property
+    def gmail_mcp_oauth_keys_file(self) -> Path:
+        """honestapply's own Google OAuth client keys (gcp-oauth.keys.json)."""
+        return self.gmail_mcp_config_path / "gcp-oauth.keys.json"
+
+    @property
+    def gmail_mcp_credentials_file(self) -> Path:
+        """The minted, locally-stored token — present once connected."""
+        return self.gmail_mcp_config_path / "credentials.json"
 
     def api_key_for(self, provider: str | None = None) -> str | None:
         provider = provider or self.llm_provider

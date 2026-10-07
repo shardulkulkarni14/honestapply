@@ -139,6 +139,11 @@ class Job(Base):
         cascade="all, delete-orphan",
         order_by="JobEvent.at",
     )
+    emails: Mapped[list["EmailMessage"]] = relationship(
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="EmailMessage.received_at",
+    )
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Job {self.id} {self.company!r} {self.title!r} [{self.status}]>"
@@ -183,6 +188,41 @@ class JobEvent(Base):
     note: Mapped[str | None] = mapped_column(Text, default=None)
 
     job: Mapped["Job"] = relationship(back_populates="events")
+
+
+class EmailMessage(Base):
+    """A recruiter / ATS email the inbox sync ingested from Gmail.
+
+    Stored for two reasons: dedup (``gmail_msg_id`` is unique, so a message is
+    classified exactly once no matter how often ``inbox`` runs) and linkage —
+    the dashboard can show the thread(s) behind a status change. The row is
+    data, never trust: email content is attacker-controllable, so the classifier
+    treats it as untrusted and this table only *records* what was seen; any
+    status change it caused is in ``job_events`` with ``source='email'``.
+
+    ``job_id`` is nullable: an email we could not confidently tie to a tracked
+    application is still recorded (so it isn't re-examined every run) but changes
+    no job.
+    """
+
+    __tablename__ = "email_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int | None] = mapped_column(
+        ForeignKey("jobs.id"), index=True, default=None
+    )
+    gmail_msg_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    thread_id: Mapped[str | None] = mapped_column(String(64), default=None)
+    sender: Mapped[str | None] = mapped_column(String(320), default=None)
+    subject: Mapped[str | None] = mapped_column(Text, default=None)
+    snippet: Mapped[str | None] = mapped_column(Text, default=None)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    # Classifier output (see honestapply.email.sync). Nullable for "other".
+    classification: Mapped[str | None] = mapped_column(String(32), default=None)
+    confidence: Mapped[int | None] = mapped_column(Integer, default=None)  # 0-100
+    processed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    job: Mapped["Job | None"] = relationship(back_populates="emails")
 
 
 class RunLog(Base):

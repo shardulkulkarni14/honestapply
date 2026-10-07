@@ -143,21 +143,42 @@ def doctor() -> None:
         row(f"LLM key ({provider})", bool(key),
             "present" if key else "missing — set in .env (or use LLM_PROVIDER=claude_cli for no key)")
 
-    # Playwright MCP
+    # MCP servers (Playwright for apply, Gmail for inbox) — one `claude mcp list`.
     claude_bin = shutil.which("claude")
-    mcp_ok = None
-    detail = "claude CLI not found"
+    mcp_list = ""
+    mcp_err: str | None = None
     if claude_bin:
         try:
-            out = subprocess.run(
+            mcp_list = subprocess.run(
                 [claude_bin, "mcp", "list"], capture_output=True, text=True, timeout=30
             ).stdout.lower()
-            mcp_ok = "playwright" in out
-            detail = "configured" if mcp_ok else "not configured — run: claude mcp add playwright -- npx @playwright/mcp@latest"
         except Exception as exc:  # pragma: no cover
-            mcp_ok = False
-            detail = f"check failed: {exc}"
-    row("Playwright MCP", mcp_ok, detail)
+            mcp_err = str(exc)
+
+    def _mcp_row(label: str, name: str, add_hint: str) -> None:
+        if not claude_bin:
+            row(label, None, "claude CLI not found")
+        elif mcp_err is not None:
+            row(label, False, f"check failed: {mcp_err}")
+        else:
+            present = name in mcp_list
+            # `claude mcp list` marks a remote server "connected"/"failed" after
+            # its name; treat an explicit "connected" as the healthy signal.
+            connected = present and "fail" not in mcp_list.split(name, 1)[1][:40]
+            row(label, present and connected, "connected" if present else f"not configured — {add_hint}")
+
+    _mcp_row("Playwright MCP (apply)", "playwright",
+             "run: claude mcp add playwright -- npx @playwright/mcp@latest")
+
+    # Gmail inbox: the local MCP server is honestapply-owned, so its health is the
+    # local token file, not `claude mcp list` (which reflects the Claude account).
+    if settings.gmail_mcp_credentials_file.exists():
+        row("Gmail MCP (inbox)", True,
+            f"connected — token at {settings.gmail_mcp_credentials_file} (scopes: {settings.gmail_mcp_scopes})")
+    elif settings.gmail_mcp_oauth_keys_file.exists():
+        row("Gmail MCP (inbox)", None, "client keys set up; not connected — run: honestapply gmail-connect")
+    else:
+        row("Gmail MCP (inbox)", None, "optional — see docs/GMAIL_SETUP.md to enable")
 
     # Chrome / Chromium
     chrome_paths = [
@@ -396,6 +417,94 @@ def apply_packet(
 
     n = run_manual_assist(ids=_parse_ids(ids), limit=limit)
     console.print(f"[green]Built {n} manual-assist packet(s) → data/outputs/<id>/apply_packet.md[/green]")
+
+
+@app.command(name="gmail-connect")
+def gmail_connect() -> None:
+    """Connect Gmail for inbox sync (one-time, honestapply-owned OAuth).
+
+    The inbox reads Gmail through a local Gmail MCP server (see `.mcp.json`). This
+    runs that server's one-time auth with least-privilege scopes: a browser opens
+    for Google's consent screen, and the token is written to a LOCAL file
+    (default ~/.gmail-mcp/credentials.json, chmod 600) that belongs to this
+    install — not to any Claude account. Requires the OAuth client keys at
+    gcp-oauth.keys.json first; see docs/GMAIL_SETUP.md for the Google Cloud setup.
+    """
+    s = get_settings()
+
+    if not shutil.which("npx"):
+        console.print(
+            "`npx` (Node.js) is not on PATH. The local Gmail MCP server runs via "
+            "npx — install Node.js 22+ first.",
+            style="red", markup=False,
+        )
+        raise typer.Exit(1)
+
+    keys = s.gmail_mcp_oauth_keys_file
+    if not keys.exists():
+        console.print(
+            f"Missing OAuth client keys at {keys}.\n"
+            "Create a Google OAuth client (Desktop app, or Web app with redirect "
+            "http://localhost:3000/oauth2callback), download its JSON, and save it "
+            f"there as gcp-oauth.keys.json. See docs/GMAIL_SETUP.md.",
+            style="red", markup=False,
+        )
+        raise typer.Exit(1)
+
+    if s.gmail_mcp_credentials_file.exists():
+        console.print(f"[green]✓ Gmail already connected.[/green] Token at {s.gmail_mcp_credentials_file}")
+        console.print("Run [cyan]honestapply inbox[/cyan] to sync recruiter emails into your tracker.")
+        return
+
+    # Hand off to the server's own auth command. It opens a browser, runs Google's
+    # consent flow with ONLY the scopes we pass, and writes the token locally.
+    scope_args = [f"--scopes={scope}" for scope in s.gmail_mcp_scopes.split()]
+    console.print(
+        f"Authorizing Gmail (scopes: {s.gmail_mcp_scopes}) — a browser will open. "
+        f"Sign in and approve.\n"
+    )
+    proc = subprocess.run(
+        ["npx", "-y", s.gmail_mcp_package, "auth", *scope_args], check=False
+    )
+
+    if proc.returncode == 0 and s.gmail_mcp_credentials_file.exists():
+        console.print(f"\n[green]✓ Gmail connected.[/green] Token saved to {s.gmail_mcp_credentials_file}")
+        console.print(f"Scopes: {s.gmail_mcp_scopes} (read-only — no send/modify tools are exposed).")
+        console.print("Next: [cyan]honestapply inbox[/cyan] to sync recruiter emails into your tracker.")
+    else:
+        console.print(
+            "\nAuth didn't complete (no token file written). Re-run "
+            "[cyan]honestapply gmail-connect[/cyan], or check [cyan]honestapply doctor[/cyan].",
+            style="yellow",
+        )
+        raise typer.Exit(1)
+
+
+@app.command()
+def inbox(
+    days: int = typer.Option(None, "--days", help="Look back this many days (default: HONESTAPPLY_INBOX_LOOKBACK_DAYS)."),
+    max_results: int = typer.Option(100, "--max", help="Max messages to scan this run."),
+    min_confidence: int = typer.Option(None, help="Only move a job at/above this 0-100 confidence."),
+) -> None:
+    """Sync recruiter/ATS emails from Gmail into the tracker. → email.sync.run_inbox()
+
+    A `claude` agent reads Gmail over MCP and classifies each message; honestapply
+    then matches it to the jobs you've applied to and updates status (attributed
+    to source='email' in job_events). Conservative: a job only moves on a
+    confident, clear match that names the company, and never backwards.
+    """
+    from honestapply.email.agent import InboxAgentError
+    from honestapply.email.sync import run_inbox
+
+    try:
+        r = run_inbox(lookback_days=days, max_results=max_results, min_confidence=min_confidence)
+    except InboxAgentError as exc:
+        console.print(str(exc), style="red", markup=False)
+        raise typer.Exit(1)
+    console.print(
+        f"[green]Inbox: scanned {r['scanned']} new email(s), matched {r['matched']}, "
+        f"updated {r['updated']} job status(es).[/green]"
+    )
 
 
 @app.command()

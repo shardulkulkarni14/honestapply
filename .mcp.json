@@ -7,6 +7,15 @@
         "@playwright/mcp@latest"
       ],
       "env": {}
+    },
+    "gmail": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@klodr/gmail-mcp"
+      ],
+      "env": {}
     }
   }
 }
