@@ -48,8 +48,8 @@ pipeline with no API key (shells out to the user's Claude Code login).
 - `scripts/` — reporting: `build_tracker.py` (markdown board from the DB),
   `fetch_job_descriptions.py` (archive JDs before postings vanish)
 - `dashboard/api.py` — FastAPI review dashboard (`honestapply dashboard`); one table,
-  every local artifact linked. Optional Next.js frontend in `dashboard/web/`
-  (`npm install && npm run build` → static export served by FastAPI; works without it)
+  every local artifact linked. Serves a single self-contained page (`dashboard/index.html`)
+  at `/` — no build step, no Node
 
 ## Apply stage notes
 

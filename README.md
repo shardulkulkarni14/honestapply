@@ -126,7 +126,7 @@ Then:
 honestapply run                  # discover → enrich → score → tailor → cover-letter (NOT apply)
 honestapply status               # counts per status, recent applications, success rate
 honestapply apply --dry-run      # fill forms but stop before submit (first 3 always dry-run)
-honestapply dashboard            # one-table review UI (FastAPI; optional Next.js frontend)
+honestapply dashboard            # one-table review UI (FastAPI + a single self-contained page)
 ```
 
 You never have to grant the apply stage anything: `--dry-run` plus
@@ -188,11 +188,9 @@ transitions are never edited, so the log stays a faithful audit trail. Manual st
 changes made from the CLI (`honestapply mark <id> <status> --note … --source …`) or the
 dashboard's status dropdown are recorded the same way, attributed to whoever made them.
 
-Architecture: a FastAPI backend (`dashboard/api.py` — JSON API + local file serving) and
-an optional Next.js frontend (`dashboard/web/`). Build the frontend once with
-`cd dashboard/web && npm install && npm run build`; FastAPI serves the static export at
-`/` — one command, one server. Without Node, a built-in fallback table keeps the
-dashboard fully functional.
+Architecture: a FastAPI backend (`dashboard/api.py` — JSON API + local file serving)
+that serves one self-contained page (`dashboard/index.html`) at `/`. No build step, no
+Node, no bundler — `honestapply dashboard` is one command and one server.
 
 ## Tracking & reporting
 
