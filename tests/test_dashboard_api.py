@@ -13,7 +13,9 @@ def client():
 
     import dashboard.api as api
 
-    return TestClient(api.app)
+    c = TestClient(api.app)
+    c.cookies.set("ha_token", api.DASH_TOKEN)  # dashboard requires the local-auth token
+    return c
 
 
 def test_patch_sets_status_and_records_a_dashboard_event(client, add_job):
@@ -113,3 +115,69 @@ def test_add_empty_note_is_rejected(client, add_job):
 
 def test_add_note_to_unknown_job_is_404(client):
     assert client.post("/api/jobs/999999/events", json={"note": "x"}).status_code == 404
+
+
+# --- run control / funnel / applications / activity --------------------------
+def test_patch_rejects_pipeline_internal_status(client, add_job):
+    """A non-tech user must not be able to re-arm the automation from the UI."""
+    jid = add_job(status=Status.APPLIED)
+    assert client.patch(f"/api/jobs/{jid}", json={"status": "ready_to_apply"}).status_code == 400
+    assert client.patch(f"/api/jobs/{jid}", json={"status": "discovered"}).status_code == 400
+
+
+def test_funnel_is_cumulative(client, add_job):
+    jid = add_job(status=Status.APPLIED)
+    client.patch(f"/api/jobs/{jid}", json={"status": Status.SCREENING})
+    client.patch(f"/api/jobs/{jid}", json={"status": Status.REJECTED})
+    f = client.get("/api/funnel").json()
+    stages = {s["key"]: s["count"] for s in f["stages"]}
+    # passed through applied + screening, so both count it even though now rejected
+    assert stages["applied"] >= 1 and stages["in_process"] >= 1
+    outcomes = {o["key"]: o["count"] for o in f["outcomes"]}
+    assert outcomes["rejected"] >= 1
+    assert "total" in f and "scanned" in f
+
+
+def test_applications_orders_active_first(client, add_job):
+    add_job(company="Zeta", status=Status.APPLIED)
+    add_job(company="Alpha", status=Status.INTERVIEWING, url="https://x/2")
+    statuses = [r["status"] for r in client.get("/api/applications").json()]
+    assert statuses.index("interviewing") < statuses.index("applied")
+
+
+def test_activity_timestamps_carry_utc_offset(client, add_job):
+    jid = add_job(status=Status.APPLIED)
+    client.patch(f"/api/jobs/{jid}", json={"status": Status.REJECTED})
+    acts = client.get("/api/activity").json()
+    assert acts and acts[0]["at"].endswith("+00:00")
+
+
+def test_run_endpoints(client, monkeypatch):
+    import dashboard.api as api
+
+    class FakeProc:
+        def __init__(self):
+            self.stdout = iter(["starting\n", "done\n"])
+            self.returncode, self.pid = 0, 999999
+
+        def poll(self):
+            return 0  # already finished, for a deterministic test
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(api.subprocess, "Popen", lambda *a, **k: FakeProc())
+    assert client.post("/api/run", json={"stage": "discover"}).status_code == 200
+    assert client.get("/api/run").status_code == 200
+    assert client.post("/api/run", json={"stage": "not-a-stage"}).status_code == 400
+
+
+def test_requires_local_auth_token():
+    from fastapi.testclient import TestClient
+
+    import dashboard.api as api
+
+    anon = TestClient(api.app)  # no token cookie
+    assert anon.get("/api/applications").status_code == 401
+    anon.cookies.set("ha_token", api.DASH_TOKEN)
+    assert anon.get("/api/applications").status_code == 200
