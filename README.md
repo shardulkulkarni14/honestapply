@@ -1,6 +1,20 @@
-# honestapply
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+  <img alt="honestapply" src="docs/logo-light.svg" height="44">
+</picture>
 
 **A job-application agent that can't lie on your behalf — and that you can leave running.**
+
+[![CI](https://github.com/shardulkulkarni14/honestapply/actions/workflows/ci.yml/badge.svg)](https://github.com/shardulkulkarni14/honestapply/actions/workflows/ci.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![Python 3.11–3.13](https://img.shields.io/badge/python-3.11%E2%80%933.13-blue.svg)](pyproject.toml)
+[![Status: early (v0.2.0)](https://img.shields.io/badge/status-early%20(v0.2.0)-orange.svg)](CHANGELOG.md)
+
+**[Quickstart](#quickstart) · [Running it for real](#running-it-for-real) · [Safety](SECURITY.md) · [License](#license--commercial-use)**
+
+</div>
 
 It finds roles, scores them, tailors a résumé, writes a cover letter, and fills in the
 application. Everything runs on your own machine: your résumé never reaches a service,
