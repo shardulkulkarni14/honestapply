@@ -13,31 +13,62 @@ Run via `honestapply dashboard` (uvicorn, default port 8501).
 
 from __future__ import annotations
 
+import atexit
+import os
 import re
+import secrets
+import signal
 import subprocess
 import threading
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import func
 
 from honestapply.config import PATHS
 from honestapply.db.events import transition
-from honestapply.db.models import Application, Job, JobEvent, Status
+from honestapply.db.models import Application, Job, JobEvent
 from honestapply.db.session import init_db, session_scope
 
 ROOT = PATHS.root
 ARCHIVE = ROOT / "data" / "application_archive"
 JD_DIR = ARCHIVE / "jd"
-WEB_OUT = Path(__file__).resolve().parent / "web" / "out"
 
 app = FastAPI(title="honestapply dashboard", docs_url="/api/docs")
 init_db()
+
+# --- Local-only auth --------------------------------------------------------
+# The dashboard can launch pipeline runs and read/write everything, so even on
+# localhost it needs a gate: a malicious web page you visit can POST to
+# 127.0.0.1, and a DNS-rebinding attack can masquerade as localhost. A one-time
+# token (printed in the terminal, then stored as a SameSite=Strict cookie) plus a
+# Host-header check closes both. Set HONESTAPPLY_DASH_TOKEN to pin the token.
+DASH_TOKEN = os.environ.get("HONESTAPPLY_DASH_TOKEN") or secrets.token_urlsafe(16)
+_ALLOWED_HOSTS = {"localhost", "127.0.0.1", "testserver", ""}
+
+
+@app.middleware("http")
+async def _local_auth(request: Request, call_next):
+    if request.url.path == "/favicon.ico":
+        return await call_next(request)
+    host = (request.headers.get("host") or "").rsplit(":", 1)[0]
+    if host not in _ALLOWED_HOSTS:  # anti DNS-rebinding
+        return Response("Bad host", status_code=400)
+    tok = request.cookies.get("ha_token") or request.query_params.get("t") or ""
+    if not secrets.compare_digest(tok, DASH_TOKEN):
+        return Response(
+            "Unauthorized — open the dashboard from the URL printed in your terminal "
+            "(it carries a one-time key).",
+            status_code=401,
+        )
+    response = await call_next(request)
+    if request.query_params.get("t") and secrets.compare_digest(request.query_params["t"], DASH_TOKEN):
+        response.set_cookie("ha_token", DASH_TOKEN, samesite="strict", httponly=True, max_age=86400 * 30)
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -74,8 +105,44 @@ def _jd_file(job_id: int) -> Path | None:
     return hits[0] if hits else None
 
 
+# Perf: /api/applications used to glob the JD dir and re-parse every answers file
+# once PER ROW (×~1000) on every 15s poll. Build the JD-id set with one iterdir,
+# and cache the parsed answers until the files change.
+def _jd_job_ids() -> set[int]:
+    ids: set[int] = set()
+    if JD_DIR.exists():
+        for p in JD_DIR.iterdir():
+            head = p.name.split("_", 1)[0]
+            if p.suffix == ".md" and head.isdigit():
+                ids.add(int(head))
+    return ids
+
+
+_answers_cache: dict = {"sig": None, "entries": []}
+
+
+def _answer_entries_cached() -> list[dict]:
+    files = sorted(ARCHIVE.glob("answers_*.md")) if ARCHIVE.exists() else []
+    sig = tuple((f.name, f.stat().st_mtime) for f in files)
+    if _answers_cache["sig"] != sig:
+        _answers_cache["sig"] = sig
+        _answers_cache["entries"] = _answer_entries()
+    return _answers_cache["entries"]
+
+
 def _exists(path: str | None) -> bool:
     return bool(path) and Path(path).exists() and Path(path).stat().st_size > 0
+
+
+def _iso_utc(dt: datetime | None) -> str | None:
+    """ISO-8601 WITH a UTC offset. Event timestamps are stored UTC (utcnow) but
+    SQLite hands them back naive; without the offset the browser parses them as
+    local time and "2h ago" is wrong by the user's UTC offset."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +188,8 @@ def _next_interview(*texts: str) -> tuple[str, str]:
 @app.get("/api/applications")
 def applications() -> list[dict]:
     """One row per application — everything the table needs, links included."""
-    entries = _answer_entries()
+    entries = _answer_entries_cached()
+    jd_ids = _jd_job_ids()
 
     rows: list[dict] = []
     with session_scope() as s:
@@ -175,7 +243,7 @@ def applications() -> list[dict]:
                     "next_interview_iso": ni_iso,
                     "confirmation": (latest.confirmation_text or "")[:300] if latest else "",
                     "links": {
-                        "jd": bool(_jd_file(j.id)) or bool(j.description),
+                        "jd": (j.id in jd_ids) or bool(j.description),
                         "resume": _exists(j.tailored_resume_path),
                         "cover": _exists(j.cover_letter_path),
                         "answers": len(_answers_for(j.company or "", entries)),
@@ -185,9 +253,8 @@ def applications() -> list[dict]:
                 }
             )
 
+    # Status priority first, most-recent within each (stable sorts, applied last).
     order = {"interviewing": 0, "screening": 1, "applied": 2, "needs_human": 3}
-    rows.sort(key=lambda r: (order.get(r["status"], 4), r["applied_at"] == "", r["applied_at"]), reverse=False)
-    # within same status, most recent first
     rows.sort(key=lambda r: r["applied_at"], reverse=True)
     rows.sort(key=lambda r: order.get(r["status"], 4))
     return rows
@@ -202,15 +269,21 @@ def summary() -> dict:
     return {"total": len(rows), "by_status": counts}
 
 
-# Plain-language pipeline stages (the funnel) and outcome buckets, each mapping to
-# a set of raw statuses. This is the non-technical "face" of the status taxonomy.
+# Cumulative funnel stages: "ever reached this stage or beyond". Each maps to the
+# set of statuses that imply the stage was reached — counted as distinct jobs in
+# job_events, so a job that has since moved on still counts toward the stage it
+# passed through. This makes it a real (monotonically non-increasing) funnel,
+# unlike counting only current status. "Jobs found" is the KPI total, not a bar.
 _FUNNEL_STAGES = [
-    ("found", "Jobs found", ["discovered"]),
-    ("prepared", "Prepared", ["enriched", "scored", "tailored", "covered", "ready_to_apply"]),
-    ("applied", "Applied", ["applied", "dry_run_completed"]),
-    ("in_process", "In process", ["screening", "interviewing"]),
-    ("offer", "Offers", ["offer"]),
+    ("prepared", "Prepared",
+     {"covered", "ready_to_apply", "applied", "dry_run_completed",
+      "screening", "interviewing", "offer", "rejected", "ghosted"}),
+    ("applied", "Applied",
+     {"applied", "dry_run_completed", "screening", "interviewing", "offer", "rejected", "ghosted"}),
+    ("in_process", "In process", {"screening", "interviewing", "offer"}),
+    ("offer", "Offers", {"offer"}),
 ]
+# Outcome buckets — these ARE current-state (where the job stands now).
 _OUTCOMES = [
     ("offer", "Offers", ["offer"], "good"),
     ("in_process", "In process", ["screening", "interviewing"], "info"),
@@ -223,25 +296,27 @@ _OUTCOMES = [
 
 @app.get("/api/funnel")
 def funnel() -> dict:
-    """The pipeline as plain-language stages + outcome buckets, for the dashboard
-    face. Counts are of jobs currently in each status set."""
-    by_status: dict[str, int] = {}
+    """The pipeline as a cumulative funnel (ever-reached, from job_events) plus
+    current-state outcome buckets, for the dashboard face."""
     with session_scope() as s:
-        for status, n in (
-            s.query(Job.status, func.count(Job.id)).group_by(Job.status).all()
-        ):
-            by_status[status] = n
-    total = sum(by_status.values())
+        total = s.query(func.count(Job.id)).scalar() or 0
+        by_status = dict(s.query(Job.status, func.count(Job.id)).group_by(Job.status).all())
 
-    def tally(statuses: list[str]) -> int:
-        return sum(by_status.get(st, 0) for st in statuses)
+        def reached(statuses: set[str]) -> int:
+            return (
+                s.query(func.count(func.distinct(JobEvent.job_id)))
+                .filter(JobEvent.to_status.in_(statuses))
+                .scalar()
+                or 0
+            )
 
-    stages = [{"key": k, "label": lbl, "count": tally(sts)} for k, lbl, sts in _FUNNEL_STAGES]
+        stages = [{"key": k, "label": lbl, "count": reached(sts)} for k, lbl, sts in _FUNNEL_STAGES]
+
     outcomes = [
-        {"key": k, "label": lbl, "count": tally(sts), "tone": tone}
+        {"key": k, "label": lbl, "count": sum(by_status.get(st, 0) for st in sts), "tone": tone}
         for k, lbl, sts, tone in _OUTCOMES
     ]
-    return {"total": total, "stages": stages, "outcomes": outcomes, "by_status": by_status}
+    return {"total": total, "scanned": total, "stages": stages, "outcomes": outcomes, "by_status": by_status}
 
 
 # ---------------------------------------------------------------------------
@@ -292,10 +367,12 @@ class _Runner:
             self._proc = subprocess.Popen(  # noqa: S603 — fixed command set
                 _RUN_STAGES[stage],
                 cwd=str(ROOT),
+                stdin=subprocess.DEVNULL,  # a stage that ever prompts gets EOF, not a hang
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
+                start_new_session=True,  # own process group, so we can kill children (Chromium)
             )
             threading.Thread(target=self._pump, daemon=True).start()
 
@@ -309,10 +386,16 @@ class _Runner:
 
     def stop(self) -> None:
         if self._running and self._proc is not None:
-            self._proc.terminate()
+            # Kill the whole process group so browser/child processes die too.
+            try:
+                os.killpg(os.getpgid(self._proc.pid), signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, OSError):
+                self._proc.terminate()
 
 
 _RUNNER = _Runner()
+# Don't leave a run (and its browser children) alive after the server exits.
+atexit.register(_RUNNER.stop)
 
 
 class RunReq(BaseModel):
@@ -363,7 +446,7 @@ def activity(limit: int = 40) -> list[dict]:
                     "to": ev.to_status,
                     "source": ev.source,
                     "note": ev.note,
-                    "at": ev.at.isoformat() if ev.at else None,
+                    "at": _iso_utc(ev.at),
                 }
             )
     return out
@@ -380,12 +463,24 @@ class JobPatch(BaseModel):
     event_note: str | None = None  # note attached to *this* status transition
 
 
+# Statuses a human may set by hand from the dashboard — outcomes only. Setting a
+# pipeline-internal status (e.g. ready_to_apply, discovered) from the UI would
+# re-arm the automation on that job, which a non-technical user would do by
+# accident; the dropdown already hides these, and this is the backend guard.
+_DASHBOARD_SETTABLE = frozenset(
+    {"applied", "screening", "interviewing", "offer", "rejected", "ghosted", "needs_human"}
+)
+
+
 @app.patch("/api/jobs/{job_id}")
 def patch_job(job_id: int, patch: JobPatch) -> dict:
-    if patch.status is not None and patch.status not in Status.ALL:
+    if patch.status is not None and patch.status not in _DASHBOARD_SETTABLE:
         raise HTTPException(
             status_code=400,
-            detail=f"unknown status {patch.status!r}; must be one of {Status.ALL}",
+            detail=(
+                f"status {patch.status!r} can't be set from the dashboard; "
+                f"choose one of {sorted(_DASHBOARD_SETTABLE)}"
+            ),
         )
     # The context manager must enclose the commit (where the flush fires), so the
     # listener sees this change as dashboard-sourced with the given note.
@@ -603,43 +698,15 @@ def application_file(application_id: int, kind: str) -> FileResponse:
 
 
 # ---------------------------------------------------------------------------
-# Frontend: Next.js static export if built, else a built-in fallback table
+# Frontend: the self-contained editable dashboard (dashboard/index.html). It's a
+# real-time page that reads /api and writes back via PATCH, so it needs no build
+# step — which is exactly what a non-technical user self-hosting it wants.
 # ---------------------------------------------------------------------------
-_FALLBACK = """<!doctype html><html><head><meta charset="utf-8"><title>honestapply</title>
-<style>
- body{background:#0f1115;color:#e7eaf0;font:14px/1.5 -apple-system,Segoe UI,sans-serif;margin:24px}
- a{color:#5b8cff;text-decoration:none} a:hover{text-decoration:underline}
- table{border-collapse:collapse;width:100%} td,th{padding:7px 10px;border-bottom:1px solid #262b36;text-align:left;font-size:13px}
- th{position:sticky;top:0;background:#181b22} input{background:#181b22;color:#e7eaf0;border:1px solid #262b36;border-radius:8px;padding:8px 12px;width:320px;margin:12px 0}
- .b{padding:2px 8px;border-radius:10px;font-size:11px;background:#23364a}
-</style></head><body>
-<h2>honestapply — applications</h2>
-<p style="color:#9aa3b2">Tip: build the full UI with <code>cd dashboard/web && npm install && npm run build</code>, then restart. This fallback works without Node.</p>
-<input id="q" placeholder="filter company / role / status…"><div id="t">loading…</div>
-<script>
-let DATA=[];
-const L=(href,txt)=>`<a href="${href}" target="_blank">${txt}</a>`;
-function render(){const q=document.getElementById('q').value.toLowerCase();
- const rows=DATA.filter(r=>(r.company+' '+r.title+' '+r.status).toLowerCase().includes(q));
- document.getElementById('t').innerHTML='<table><tr><th>Company</th><th>Role</th><th>Status</th><th>Score</th><th>Applied</th><th>Links</th><th>Next / note</th></tr>'+
- rows.map(r=>{const k=r.links;const ls=[];
-  if(r.url)ls.push(L(r.url,'posting'));
-  if(k.jd)ls.push(L('/jd/'+r.job_id,'JD'));
-  if(k.resume)ls.push(L('/files/'+r.job_id+'/resume','resume'));
-  if(k.cover)ls.push(L('/files/'+r.job_id+'/cover','cover'));
-  if(k.answers)ls.push(L('/answers/'+r.job_id,'answers('+k.answers+')'));
-  if(k.post_shot)ls.push(L('/files/'+r.job_id+'/post_shot','shot'));
-  else if(k.pre_shot)ls.push(L('/files/'+r.job_id+'/pre_shot','shot'));
-  return `<tr><td><b>${r.company}</b></td><td>${r.title}</td><td><span class="b">${r.status}</span></td><td>${r.score??''}</td><td>${r.applied_at}</td><td>${ls.join(' · ')}</td><td>${r.next_action||r.confirmation.slice(0,80)}</td></tr>`}).join('')+'</table>'}
-fetch('/api/applications').then(r=>r.json()).then(d=>{DATA=d;render()});
-document.addEventListener('input',render);
-</script></body></html>"""
-
-
 _FAVICON_SVG = (
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
     "<rect width='64' height='64' rx='12' fill='#0f1115'/>"
-    "<text x='32' y='44' font-family='monospace' font-size='34' fill='#5b8cff' text-anchor='middle'>jp</text></svg>"
+    "<text x='32' y='45' font-family='-apple-system,sans-serif' font-weight='700' "
+    "font-size='30' fill='#818cf8' text-anchor='middle'>ha</text></svg>"
 )
 
 
@@ -652,18 +719,7 @@ def favicon():
 
 @app.get("/", include_in_schema=False)
 def index() -> HTMLResponse:
-    # Prefer the built Next.js export; otherwise the self-contained editable
-    # dashboard (dashboard/index.html) — a real-time page that reads /api and
-    # writes back via PATCH, so it never needs a build step. The tiny _FALLBACK
-    # remains only for the case where even that file is missing.
-    built = WEB_OUT / "index.html"
-    if built.exists():
-        return HTMLResponse(built.read_text(encoding="utf-8"))
-    editable = Path(__file__).parent / "index.html"
-    if editable.exists():
-        return HTMLResponse(editable.read_text(encoding="utf-8"))
-    return HTMLResponse(_FALLBACK)
-
-
-if WEB_OUT.exists():
-    app.mount("/_next", StaticFiles(directory=WEB_OUT / "_next"), name="next-assets")
+    page = Path(__file__).parent / "index.html"
+    if not page.exists():
+        raise HTTPException(status_code=500, detail="dashboard/index.html is missing")
+    return HTMLResponse(page.read_text(encoding="utf-8"))

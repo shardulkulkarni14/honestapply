@@ -81,6 +81,7 @@ def test_provenance_endpoint_on_a_tailored_job(add_job, tmp_path, monkeypatch):
 
     run_tailor()
     client = TestClient(api.app)
+    client.cookies.set("ha_token", api.DASH_TOKEN)  # dashboard local-auth
     resp = client.get(f"/api/jobs/{jid}/provenance")
     assert resp.status_code == 200
     body = resp.json()

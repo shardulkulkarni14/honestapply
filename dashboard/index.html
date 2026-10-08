@@ -7,7 +7,7 @@
 <style>
   :root{
     --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f6;
-    --ink:#161b26; --ink-2:#555f70; --muted:#8a93a3; --border:#e4e8ef;
+    --ink:#161b26; --ink-2:#4e5868; --muted:#6a7280; --border:#e4e8ef;
     --accent:#4f46e5; --accent-soft:#eef0fe;
     --good:#15863f; --info:#2563eb; --warning:#b45c09; --critical:#d22f2f; --neutral:#7b8595;
     --teal:#0e8a8a; --violet:#7c3aed;
@@ -162,14 +162,53 @@
   .nextline.past{color:var(--critical)}
   .empty{color:var(--muted);text-align:center;padding:26px}
   /* present mode: hide the aggregate numbers for a shoulder-surf-safe view */
-  body.present .kpis,body.present .panel.funnel-panel,body.present .count{display:none}
+  body.present .kpis,body.present .grid,body.present .count,body.present .runhelp,body.present .lastrun{display:none}
+  /* banners */
+  .banner{border-radius:10px;padding:9px 14px;margin-bottom:14px;font-size:13.5px;display:flex;
+    align-items:center;gap:10px}
+  .banner[hidden]{display:none}
+  .banner.alert{background:color-mix(in srgb,var(--critical) 14%,transparent);color:var(--critical);
+    border:1px solid color-mix(in srgb,var(--critical) 40%,transparent)}
+  .present-banner{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border)}
+  .linkbtn{background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;text-decoration:underline;padding:0}
+  /* clickable KPI tiles + sub */
+  .tile.clickable{cursor:pointer} .tile.clickable:hover{border-color:var(--accent)}
+  .tile .l .sub{color:var(--muted);font-size:11px;font-weight:500}
+  /* first-run steps + funnel caption */
+  .steps{margin:8px 0 0;padding-left:20px;color:var(--ink-2);font-size:13.5px;line-height:1.8}
+  .fcap{margin:12px 0 0;color:var(--muted);font-size:11.5px}
+  .conv{font-size:11px;color:var(--muted);margin-left:6px}
+  /* run helper + last-run card */
+  .runhelp{margin:0 0 12px;color:var(--ink-2);font-size:12.5px}
+  .lastrun{margin:-4px 0 16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    padding:9px 13px;font-size:13px;box-shadow:var(--shadow)}
+  .lastrun.ok{border-left:3px solid var(--good)} .lastrun.bad{border-left:3px solid var(--critical)}
+  .lastrun .when{color:var(--muted);font-size:11.5px;margin-left:6px}
+  .lastrun .lrbad{color:var(--critical);font-size:12px}
+  .lastrun .lrlog{color:var(--muted);font-family:var(--mono);font-size:11px;margin-top:4px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* table extras */
+  .scoremax{color:var(--muted);font-size:11px}
+  .reasonline{font-size:11.5px;color:var(--warning);margin-top:3px}
+  .toast-act{background:none;border:1px solid rgba(255,255,255,.4);color:inherit;border-radius:6px;
+    padding:1px 8px;margin-left:8px;cursor:pointer;font:inherit;font-size:12px}
+  /* mobile: never hide Files; switch the table to cards under 640px */
+  @media (max-width:640px){
+    table,thead,tbody,th,td,tr{display:block}
+    thead{display:none}
+    tr{border:1px solid var(--border);border-radius:10px;margin-bottom:10px;padding:8px 10px}
+    tr:last-child td{border-bottom:1px solid var(--border)}
+    td{border:none;padding:4px 0;display:flex;justify-content:space-between;gap:12px}
+    td::before{content:attr(data-l);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;flex:0 0 auto}
+    td.co{font-size:15px} .c-loc,.c-notes{display:flex!important}
+  }
   #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);
     color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;
     transition:opacity .2s}
   #toast.show{opacity:.96}
-  @media (max-width:980px){ .c-notes{display:none} }
-  @media (max-width:860px){ .kpis{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr}
-    .c-loc,.c-files{display:none} }
+  @media (max-width:980px) and (min-width:641px){ .c-notes{display:none} }
+  @media (max-width:860px) and (min-width:641px){ .kpis{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr}
+    .c-loc{display:none} }  /* Files is core value — never hidden */
 </style>
 </head>
 <body>
@@ -179,30 +218,38 @@
     <span class="sub" id="subtitle">loading…</span>
     <span class="spacer"></span>
     <span class="live"><span class="pulse"></span><span id="livelabel">live</span></span>
-    <button class="btn" onclick="togglePresent()" id="presentBtn">🙈 Present</button>
-    <button class="btn" onclick="refreshAll()">↻ Refresh</button>
+    <button class="btn" onclick="togglePresent()" id="presentBtn">🙈 Hide numbers</button>
+    <button class="btn" onclick="refreshAll()" aria-label="Refresh"><span aria-hidden="true">↻</span> Refresh</button>
   </header>
+
+  <div class="banner alert" id="offline" role="alert" hidden></div>
+  <div class="banner present-banner" id="presentBanner" hidden>
+    <span>🙈 Numbers hidden for privacy.</span>
+    <button class="linkbtn" onclick="togglePresent()">Show numbers</button>
+  </div>
 
   <!-- run control -->
   <section class="runbar">
     <div class="runbtns">
-      <button class="btn run" onclick="startRun('discover')">🔎 Find jobs</button>
-      <button class="btn run" onclick="startRun('prepare')">⚙️ Prepare</button>
-      <button class="btn run" onclick="startRun('apply_dry')" title="Dry-run: fills forms but never submits">📝 Apply (dry-run)</button>
+      <button class="btn run" onclick="startRun('discover')"><span aria-hidden="true">🔎</span> Find new jobs</button>
+      <button class="btn run" onclick="startRun('prepare')"><span aria-hidden="true">⚙️</span> Prepare CVs &amp; cover letters</button>
+      <button class="btn run" onclick="startRun('apply_dry')"><span aria-hidden="true">📝</span> Practice applying</button>
     </div>
-    <div class="runstatus" id="runstatus" hidden></div>
+    <div class="runstatus" id="runstatus" role="status" aria-live="polite" hidden></div>
   </section>
+  <p class="runhelp">Find jobs that match you → prepare a tailored CV + cover letter → practice-fill the forms (<b>nothing is submitted</b>).</p>
+  <div class="lastrun" id="lastrun" hidden></div>
 
   <!-- headline numbers -->
   <section class="kpis" id="kpis"></section>
 
   <section class="grid">
     <div class="panel funnel-panel">
-      <h2>Your pipeline</h2>
-      <p class="hint">Where every job stands right now — honestapply sources widely and applies selectively.</p>
+      <h2 id="funnelTitle">Your pipeline</h2>
+      <p class="hint" id="funnelHint">A real funnel — how far your jobs have progressed.</p>
       <div class="funnel" id="funnel"></div>
     </div>
-    <div class="panel">
+    <div class="panel feed-panel">
       <h2>Recent activity</h2>
       <p class="hint">What just happened — updated live.</p>
       <div class="feed" id="feed"><div class="empty">loading…</div></div>
@@ -227,7 +274,7 @@
   </div>
   <div class="pager" id="pager"></div>
 </div>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const esc = s => (s??'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -252,38 +299,75 @@ const tone = s => TONE[s] || 'neutral';
 function rel(iso){
   if(!iso) return '';
   const d=new Date(iso), now=new Date(), s=(now-d)/1000;
+  if(s<0) return 'just now';
   if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+'m ago';
   if(s<86400) return Math.floor(s/3600)+'h ago';
   if(s<172800) return 'yesterday';
   if(s<604800) return Math.floor(s/86400)+'d ago';
   return d.toLocaleDateString();
 }
+// Only emit http(s) links — scraped posting URLs could carry javascript: etc.
+function safeUrl(u){ return /^https?:\/\//i.test(u||'') ? u : null; }
+// Online/offline indicator + banner so a dead backend never reads as "live".
+function setOnline(ok, msg){
+  const lab=document.getElementById('livelabel'), pulse=document.querySelector('.live .pulse');
+  const ban=document.getElementById('offline');
+  if(lab) lab.textContent = ok?'live':'offline';
+  if(pulse) pulse.style.background = ok?'var(--good)':'var(--critical)';
+  if(ban){ ban.hidden = ok; if(!ok) ban.textContent = msg||"Can't reach honestapply — is it still running in your terminal?"; }
+}
+async function getJSON(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
 
 // --- KPIs + funnel ---------------------------------------------------------
 async function loadFunnel(){
-  const f = await (await fetch('/api/funnel')).json();
+  let f;
+  try{ f = await getJSON('/api/funnel'); setOnline(true); }
+  catch(e){ setOnline(false); return; }
   const bs = f.by_status||{};
   const g = (...k)=>k.reduce((a,x)=>a+(bs[x]||0),0);
-  const sent = g('applied','dry_run_completed','screening','interviewing','offer','rejected','ghosted');
+  // "Applications sent" = REAL submissions only. Dry-runs are practice — nothing left your machine.
+  const sent = g('applied','screening','interviewing','offer','rejected','ghosted');
+  const practice = g('dry_run_completed');
   const kpis = [
-    {n:f.total, l:'Jobs found', t:''},
-    {n:sent, l:'Applications sent', t:'accent'},
-    {n:g('screening','interviewing'), l:'In process', t:'info'},
-    {n:g('offer'), l:'Offers', t:'good'},
-    {n:g('needs_human'), l:'Needs you', t:'warning'},
+    {n:f.total, l:'Jobs found', t:'', fk:null},
+    {n:sent, l:'Applications sent', t:'accent', fk:'applied', sub: practice?`+${practice} practice`:''},
+    {n:g('screening','interviewing'), l:'In process', t:'info', fk:'in_process'},
+    {n:g('offer'), l:'Offers', t:'good', fk:'offer'},
+    {n:g('needs_human'), l:'Needs you', t:'warning', fk:'needs_human'},
   ];
   document.getElementById('kpis').innerHTML = kpis.map(k=>
-    `<div class="tile ${k.t}"><div class="bar"></div><div class="n">${k.n.toLocaleString()}</div><div class="l">${k.l}</div></div>`).join('');
+    `<div class="tile ${k.t}${k.fk?' clickable':''}" ${k.fk?`onclick="setFilter('${k.fk}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')setFilter('${k.fk}')"`:''}>`
+    + `<div class="bar"></div><div class="n">${k.n.toLocaleString()}</div>`
+    + `<div class="l">${k.l}${k.sub?` <span class="sub">${k.sub}</span>`:''}</div></div>`).join('');
 
+  const title=document.getElementById('funnelTitle'), hint=document.getElementById('funnelHint');
+  // First-run / empty state: zero jobs — explain the loop instead of showing stubs.
+  if((f.total||0) === 0){
+    title.textContent='Welcome 👋';
+    hint.textContent='honestapply works in three steps — start with “Find new jobs” above.';
+    document.getElementById('funnel').innerHTML =
+      `<ol class="steps"><li><b>Find new jobs</b> that match your profile.</li>`
+      + `<li><b>Prepare</b> a tailored CV + cover letter for each.</li>`
+      + `<li><b>Practice applying</b> — fills the forms; nothing is submitted.</li></ol>`;
+    return;
+  }
+  title.textContent='Your pipeline';
+  hint.textContent='A real funnel — how far your jobs have progressed.';
   const max = Math.max(1, ...f.stages.map(s=>s.count));
-  document.getElementById('funnel').innerHTML = f.stages.map((s,i)=>{
+  const bars = f.stages.map((s,i)=>{
     const prev = i>0 ? f.stages[i-1].count : null;
-    const conv = (prev && prev>0) ? `<span class="conv">${Math.round(s.count/prev*100)}%</span>` : '';
+    const conv = (prev && prev>0) ? `<span class="conv">${Math.round(s.count/prev*100)}% of ${esc(f.stages[i-1].label).toLowerCase()}</span>` : '';
     const w = Math.max(2, s.count/max*100);
     return `<div class="frow ${s.key}"><div class="fl">${esc(s.label)}</div>`
       + `<div class="ftrack"><div class="ffill" style="width:${w}%"></div></div>`
       + `<div class="fn">${s.count.toLocaleString()}${conv}</div></div>`;
   }).join('');
+  document.getElementById('funnel').innerHTML = bars
+    + `<p class="fcap">from ${(f.scanned||f.total).toLocaleString()} postings scanned</p>`;
 }
 
 // --- activity feed ---------------------------------------------------------
@@ -303,7 +387,8 @@ function sentence(e){
 }
 const SRC = {pipeline:'auto', email:'email', dashboard:'you', human:'you'};
 async function loadFeed(){
-  const raw = await (await fetch('/api/activity?limit=60')).json();
+  let raw;
+  try{ raw = await getJSON('/api/activity?limit=60'); }catch(e){ return; }
   // Drop no-op churn (e.g. enriched->scored->tailored all read as "Preparing").
   const evs = raw.filter(e => lbl(e.from) !== lbl(e.to)).slice(0,40);
   const el = document.getElementById('feed');
@@ -320,18 +405,25 @@ async function loadFeed(){
 }
 
 // --- table -----------------------------------------------------------------
+// Only the outcomes a human records by hand — setting a pipeline-internal status
+// would re-arm the automation (and the backend rejects it anyway).
+const DROPDOWN_STATUSES = ['applied','screening','interviewing','offer','rejected','ghosted','needs_human'];
 function statusSelect(r){
-  const opts = Object.keys(LABEL).map(s=>`<option value="${s}"${s===r.status?' selected':''}>${lbl(s)}</option>`).join('');
-  return `<select class="pill ${tone(r.status)}" style="border:none;cursor:pointer"
-    onchange="setStatus(${r.job_id},this.value)">${opts}</select>`;
+  const inList = DROPDOWN_STATUSES.includes(r.status);
+  let opts = '';
+  if(!inList && r.status) opts += `<option value="${esc(r.status)}" selected disabled>${esc(lbl(r.status))}</option>`;
+  opts += DROPDOWN_STATUSES.map(s=>`<option value="${s}"${s===r.status?' selected':''}>${esc(lbl(s))}</option>`).join('');
+  return `<select class="pill ${tone(r.status)}" aria-label="Status for ${esc(r.company)}" style="border:none;cursor:pointer"
+    onchange="setStatus(${r.job_id}, this.value, '${esc(r.status)}')">${opts}</select>`;
 }
 function fileLinks(r){
   const L=r.links||{}; const out=[];
-  if(L.jd) out.push(`<a class="lnk" href="/jd/${r.job_id}" target="_blank">JD</a>`);
-  if(L.resume) out.push(`<a class="lnk" href="/files/${r.job_id}/resume" target="_blank">CV</a>`);
-  if(L.cover) out.push(`<a class="lnk" href="/files/${r.job_id}/cover" target="_blank">Cover</a>`);
-  if(L.post_shot) out.push(`<a class="lnk" href="/files/${r.job_id}/post_shot" target="_blank">Proof</a>`);
-  if(r.url) out.push(`<a class="lnk" href="${esc(r.url)}" target="_blank">Posting</a>`);
+  const a=(href,txt)=>`<a class="lnk" href="${href}" target="_blank" rel="noopener noreferrer">${txt}</a>`;
+  if(L.jd) out.push(a('/jd/'+r.job_id,'JD'));
+  if(L.resume) out.push(a('/files/'+r.job_id+'/resume','CV'));
+  if(L.cover) out.push(a('/files/'+r.job_id+'/cover','Cover'));
+  if(L.post_shot) out.push(a('/files/'+r.job_id+'/post_shot','Proof'));
+  const u = safeUrl(r.url); if(u) out.push(a(esc(u),'Posting'));
   return out.length? `<div class="links">${out.join('')}</div>` : '<span class="none">—</span>';
 }
 const PAGE_SIZE = 50;
@@ -361,9 +453,9 @@ function renderFilters(){
       + `${esc(f.label)}<span class="c">${n}</span></button>`;
   }).join('');
 }
-function setFilter(k){ curFilter=k; page=0; renderFilters(); renderTable(); }
-function onSearch(){ page=0; renderTable(); }
-function gotoPage(p){ page=p; renderTable();
+function setFilter(k){ curFilter=k; page=0; renderFilters(); renderTable(true); }
+function onSearch(){ page=0; renderTable(true); }
+function gotoPage(p){ page=p; renderTable(true);
   const t=document.querySelector('.toolbar'); if(t) window.scrollTo({top:t.offsetTop-12,behavior:'smooth'}); }
 function renderPager(total, pages){
   const el=document.getElementById('pager');
@@ -374,7 +466,14 @@ function renderPager(total, pages){
     + `<span class="pageof">Page ${page+1} of ${pages}</span>`
     + `<button ${page>=pages-1?'disabled':''} onclick="gotoPage(${page+1})">Next ›</button></span>`;
 }
-function renderTable(){
+function renderTable(force){
+  // Never rebuild the table out from under someone editing a cell (note or
+  // status) — that silently destroys what they were typing. Auto-refresh passes
+  // no force; user actions (filter/search/paginate) pass true.
+  if(!force){
+    const ae=document.activeElement, rowsEl=document.getElementById('rows');
+    if(ae && rowsEl && rowsEl.contains(ae)) return;
+  }
   const matched = filterRows();
   const pages = Math.max(1, Math.ceil(matched.length/PAGE_SIZE));
   if(page>pages-1) page=pages-1; if(page<0) page=0;
@@ -384,66 +483,90 @@ function renderTable(){
   const tb=document.getElementById('rows');
   if(!rows.length){ tb.innerHTML='<tr><td colspan="8" class="empty">No matching applications.</td></tr>'; return; }
   tb.innerHTML = rows.map(r=>{
-    let nxt='';
+    let extra='';
     if(r.next_interview){ const past=r.next_interview_iso && new Date(r.next_interview_iso)<new Date();
-      nxt=`<div class="nextline${past?' past':''}">📅 ${esc(r.next_interview)}</div>`; }
+      extra+=`<div class="nextline${past?' past':''}">📅 ${esc(r.next_interview)}</div>`; }
+    if(r.status==='needs_human' && r.status_reason)
+      extra+=`<div class="reasonline">⚠ ${esc(r.status_reason)}</div>`;
+    const fit = (r.score==null) ? '<span class="none">—</span>' : `${r.score}<span class="scoremax">/10</span>`;
     return `<tr>
-      <td class="co">${esc(r.company)}</td>
-      <td class="role">${esc(r.title)}${nxt}</td>
-      <td class="c-loc">${esc(r.location)||'<span class="none">—</span>'}</td>
-      <td>${statusSelect(r)}</td>
-      <td class="num">${r.score??'<span class="none">—</span>'}</td>
-      <td>${esc(r.applied_at)||'<span class="none">—</span>'}</td>
-      <td class="c-notes"><textarea class="noteinput" rows="1" placeholder="add a note…"
-        title="${esc(r.status_reason)}" onchange="saveNote(${r.job_id},this.value)">${esc(r.notes)}</textarea></td>
-      <td class="c-files">${fileLinks(r)}</td>
+      <td class="co" data-l="Company">${esc(r.company)}</td>
+      <td class="role" data-l="Role">${esc(r.title)}${extra}</td>
+      <td class="c-loc" data-l="Location">${esc(r.location)||'<span class="none">—</span>'}</td>
+      <td data-l="Status">${statusSelect(r)}</td>
+      <td class="num" data-l="Fit">${fit}</td>
+      <td data-l="Applied">${esc(r.applied_at)||'<span class="none">—</span>'}</td>
+      <td class="c-notes" data-l="Notes"><textarea class="noteinput" rows="1" placeholder="add a note…" aria-label="Note for ${esc(r.company)}"
+        oninput="noteTyping(${r.job_id}, this.value)" onchange="saveNote(${r.job_id}, this.value)">${esc(r.notes)}</textarea></td>
+      <td class="c-files" data-l="Files">${fileLinks(r)}</td>
     </tr>`;
   }).join('');
 }
-async function saveNote(job_id, notes){
-  try{ await fetch('/api/jobs/'+job_id,{method:'PATCH',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({notes})}); toast('Note saved'); }
-  catch(e){ toast('Could not save note'); }
+let _noteTimers={};
+function noteTyping(id, val){ clearTimeout(_noteTimers[id]); _noteTimers[id]=setTimeout(()=>saveNote(id, val, true), 600); }
+async function saveNote(job_id, notes, silent){
+  try{
+    const r=await fetch('/api/jobs/'+job_id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({notes})});
+    if(!r.ok){ const d=await r.json().catch(()=>({})); toast(d.detail||'Could not save note'); return; }
+    if(!silent) toast('Note saved');
+  }catch(e){ toast('Could not save note — is honestapply running?'); }
 }
+let _lastData='';
 async function loadTable(){
-  DATA = await (await fetch('/api/applications')).json();
-  document.getElementById('subtitle').textContent =
-    `${DATA.length.toLocaleString()} applications tracked`;
+  let next;
+  try{ const r=await fetch('/api/applications'); if(!r.ok) throw 0; next=await r.text(); }
+  catch(e){ setOnline(false); return; }
+  if(next===_lastData) return;   // unchanged → don't rebuild the DOM (preserves edits)
+  _lastData=next; DATA=JSON.parse(next);
+  document.getElementById('subtitle').textContent = `tracking ${DATA.length.toLocaleString()} applications`;
   renderFilters();
   renderTable();
 }
-async function setStatus(job_id, status){
+async function setStatus(job_id, status, prev){
   try{
-    await fetch('/api/jobs/'+job_id,{method:'PATCH',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({status})});
-    toast('Updated'); refreshAll();
-  }catch(e){ toast('Could not update'); }
+    const r=await fetch('/api/jobs/'+job_id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    if(!r.ok){ const d=await r.json().catch(()=>({})); toast(d.detail||'Could not update'); refreshAll(); return; }
+    _lastData='';  // force refresh
+    toast('Status updated', prev && prev!==status ? {label:'Undo', fn:()=>setStatus(job_id, prev)} : null);
+    refreshAll();
+  }catch(e){ toast('Could not update — is honestapply running?'); }
 }
 
-// --- present mode + refresh ------------------------------------------------
+// --- present mode + toast --------------------------------------------------
 function togglePresent(){
   document.body.classList.toggle('present');
   const on=document.body.classList.contains('present');
-  document.getElementById('presentBtn').textContent = on?'👁 Show':'🙈 Present';
+  document.getElementById('presentBtn').textContent = on?'👁 Show numbers':'🙈 Hide numbers';
+  document.getElementById('presentBanner').hidden = !on;
   try{ localStorage.setItem('ha_present', on?'1':''); }catch(e){}
 }
-function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),1600); }
+let _toastTimer=null;
+function toast(m, action){
+  const t=document.getElementById('toast');
+  t.innerHTML = esc(m) + (action?` <button class="toast-act">${esc(action.label)}</button>`:'');
+  if(action) t.querySelector('.toast-act').onclick=()=>{ action.fn(); t.classList.remove('show'); };
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>t.classList.remove('show'), action?5000:1800);
+}
 // --- run control -----------------------------------------------------------
-const STAGE_LABEL = {discover:'Finding jobs', prepare:'Preparing', apply_dry:'Applying (dry-run)'};
+const STAGE_LABEL = {discover:'Finding new jobs', prepare:'Preparing CVs & cover letters', apply_dry:'Practice applying'};
 let runPoll = null;
+function setRunDisabled(d){ document.querySelectorAll('.btn.run').forEach(b=>b.disabled=d); }
 async function startRun(stage){
+  if(stage==='apply_dry' && !confirm("Practice applying opens a browser and fills forms using your saved logins. Nothing is submitted. Continue?")) return;
+  setRunDisabled(true);  // synchronous, so a double-click can't fire two runs
   try{
     const r = await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage})});
-    if(r.status===409){ toast('A run is already in progress'); return; }
-    if(!r.ok){ toast('Could not start the run'); return; }
+    if(r.status===409){ toast('A run is already in progress'); pollRun(); return; }
+    if(!r.ok){ toast('Could not start the run'); setRunDisabled(false); return; }
     toast('Started: '+(STAGE_LABEL[stage]||stage)); pollRun();
-  }catch(e){ toast('Could not start the run'); }
+  }catch(e){ toast('Could not start the run — is honestapply running?'); setRunDisabled(false); }
 }
 async function stopRun(){ try{ await fetch('/api/run/stop',{method:'POST'}); }catch(e){} pollRun(); }
 function renderRun(s){
   const el = document.getElementById('runstatus');
-  document.querySelectorAll('.btn.run').forEach(b=>b.disabled = s.running);
+  setRunDisabled(s.running);
   if(s.running){
     const last = (s.log && s.log.length) ? s.log[s.log.length-1] : 'starting…';
     el.hidden=false;
@@ -451,8 +574,17 @@ function renderRun(s){
       + `<span class="logln">${esc(last)}</span>`
       + `<button class="btn stop" onclick="stopRun()">Stop</button>`;
   }else{
-    if(el.dataset.was==='1'){ toast(s.returncode===0?'Run finished ✓':'Run ended'); refreshAll(); }
     el.hidden=true; el.innerHTML='';
+    if(el.dataset.was==='1'){
+      const ok=s.returncode===0, log=(s.log&&s.log.length)?s.log[s.log.length-1]:'';
+      const lr=document.getElementById('lastrun');
+      lr.hidden=false; lr.className='lastrun '+(ok?'ok':'bad');
+      lr.innerHTML=`<b>${ok?'✓':'✕'} ${esc(STAGE_LABEL[s.stage]||s.stage)}</b> `
+        + `<span class="when">${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>`
+        + (ok?'':' <span class="lrbad">— run ended; check your terminal</span>')
+        + (log?`<div class="lrlog">${esc(log)}</div>`:'');
+      toast(ok?'Run finished ✓':'Run ended'); refreshAll();
+    }
   }
   el.dataset.was = s.running?'1':'';
 }

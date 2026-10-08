@@ -636,7 +636,10 @@ def dashboard(
     spec = importlib.util.spec_from_file_location("honestapply_dashboard_api", api_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    console.print(f"honestapply dashboard → [cyan]http://localhost:{port}[/cyan]")
+    token = getattr(module, "DASH_TOKEN", "")
+    url = f"http://localhost:{port}/" + (f"?t={token}" if token else "")
+    console.print(f"honestapply dashboard → [cyan]{url}[/cyan]")
+    console.print("[dim]Open that URL (it carries a one-time key). Keep it to yourself.[/dim]")
     uvicorn.run(module.app, host="127.0.0.1", port=port, log_level="warning")
 
 
