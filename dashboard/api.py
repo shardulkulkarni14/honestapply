@@ -27,7 +27,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from honestapply.config import PATHS
 from honestapply.db.events import transition
@@ -270,13 +270,16 @@ def summary() -> dict:
 
 
 # Cumulative funnel stages: "ever reached this stage or beyond". Each maps to the
-# set of statuses that imply the stage was reached — counted as distinct jobs in
-# job_events, so a job that has since moved on still counts toward the stage it
-# passed through. This makes it a real (monotonically non-increasing) funnel,
-# unlike counting only current status. "Jobs found" is the KPI total, not a bar.
+# set of statuses that imply the stage was reached. Counted from each job's CURRENT
+# status (its own authoritative state), NOT from job_events — because a job's
+# status is complete for every job, whereas event history is missing for jobs that
+# were set directly (imports/older rows). Because the status taxonomy is a
+# progression, a downstream status still implies every upstream stage, so the
+# counts are monotonically non-increasing (a real funnel). "Jobs found" is the KPI
+# total, not a bar.
 _FUNNEL_STAGES = [
     ("prepared", "Prepared",
-     {"covered", "ready_to_apply", "applied", "dry_run_completed",
+     {"covered", "ready_to_apply", "needs_human", "applied", "dry_run_completed",
       "screening", "interviewing", "offer", "rejected", "ghosted"}),
     ("applied", "Applied",
      {"applied", "dry_run_completed", "screening", "interviewing", "offer", "rejected", "ghosted"}),
@@ -302,13 +305,14 @@ def funnel() -> dict:
         total = s.query(func.count(Job.id)).scalar() or 0
         by_status = dict(s.query(Job.status, func.count(Job.id)).group_by(Job.status).all())
 
+        # A job counts toward a stage if its CURRENT status implies it (this covers
+        # every job, including the ~⅔ that have no event rows) OR any event shows it
+        # reached there (adds the real path for jobs that have since moved on — e.g.
+        # a now-rejected job that passed through screening still counts "In process").
         def reached(statuses: set[str]) -> int:
-            return (
-                s.query(func.count(func.distinct(JobEvent.job_id)))
-                .filter(JobEvent.to_status.in_(statuses))
-                .scalar()
-                or 0
-            )
+            cur = set(s.execute(select(Job.id).where(Job.status.in_(statuses))).scalars())
+            evt = set(s.execute(select(JobEvent.job_id).where(JobEvent.to_status.in_(statuses))).scalars())
+            return len(cur | evt)
 
         stages = [{"key": k, "label": lbl, "count": reached(sts)} for k, lbl, sts in _FUNNEL_STAGES]
 
