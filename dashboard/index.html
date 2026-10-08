@@ -6,448 +6,412 @@
 <title>honestapply</title>
 <style>
   :root{
-    --bg:#0d0f14; --panel:#151922; --panel-2:#1b2029; --line:#242b38;
-    --text:#e8ebf2; --muted:#8b93a3; --muted-2:#5f6675;
-    --accent:#5b8cff; --accent-soft:#1a2740;
-    --shadow:0 1px 0 rgba(255,255,255,.03), 0 8px 24px rgba(0,0,0,.35);
-    --i-interviewing:#2fbd74; --i-screening:#37b6c4; --i-offer:#a97bff;
-    --i-applied:#5b8cff; --i-needs_human:#e0a23c; --i-rejected:#e5606a;
-    --i-ghosted:#6b7180; --i-covered:#7a8699; --i-default:#6b7180;
+    --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f6;
+    --ink:#161b26; --ink-2:#555f70; --muted:#8a93a3; --border:#e4e8ef;
+    --accent:#4f46e5; --accent-soft:#eef0fe;
+    --good:#15863f; --info:#2563eb; --warning:#b45c09; --critical:#d22f2f; --neutral:#7b8595;
+    --teal:#0e8a8a; --violet:#7c3aed;
+    --radius:14px; --shadow:0 1px 2px rgba(20,25,40,.04),0 4px 16px rgba(20,25,40,.05);
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+    --bg:#0e1016; --surface:#161a22; --surface-2:#1d222c;
+    --ink:#e9edf4; --ink-2:#a3adbd; --muted:#6c7686; --border:#272d39;
+    --accent:#818cf8; --accent-soft:#1e2140;
+    --good:#2bb561; --info:#4b8ef7; --warning:#e0912f; --critical:#f26d6d; --neutral:#5d6778;
+    --teal:#2cc2c2; --violet:#a78bfa;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 18px rgba(0,0,0,.28);
+  }}
+  :root[data-theme="dark"]{
+    --bg:#0e1016; --surface:#161a22; --surface-2:#1d222c;
+    --ink:#e9edf4; --ink-2:#a3adbd; --muted:#6c7686; --border:#272d39;
+    --accent:#818cf8; --accent-soft:#1e2140;
+    --good:#2bb561; --info:#4b8ef7; --warning:#e0912f; --critical:#f26d6d; --neutral:#5d6778;
+    --teal:#2cc2c2; --violet:#a78bfa;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 18px rgba(0,0,0,.28);
   }
   *{box-sizing:border-box}
-  html,body{margin:0}
-  body{
-    background:var(--bg); color:var(--text);
-    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
-  .wrap{max-width:1400px; margin:0 auto; padding:28px 26px 80px}
-  header.top{display:flex; align-items:baseline; gap:14px; margin-bottom:22px; flex-wrap:wrap}
-  header.top h1{font-size:20px; font-weight:700; letter-spacing:-.02em; margin:0}
-  header.top h1 .dot{color:var(--accent)}
-  header.top .sub{color:var(--muted); font-size:13px}
-  header.top .spacer{flex:1}
-  .btn{
-    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
-    border-radius:9px; padding:8px 13px; font-size:13px; cursor:pointer; transition:.15s;
-  }
-  .btn:hover{border-color:var(--accent); color:#fff}
-
-  /* summary cards */
-  .cards{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px}
-  .card{
-    background:var(--panel); border:1px solid var(--line); border-radius:12px;
-    padding:11px 15px; min-width:104px; cursor:pointer; transition:.15s;
-    display:flex; flex-direction:column; gap:2px; box-shadow:var(--shadow);
-  }
-  .card:hover{transform:translateY(-1px); border-color:var(--muted-2)}
-  .card.active{border-color:var(--accent); background:var(--accent-soft)}
-  .card .n{font-size:22px; font-weight:700; letter-spacing:-.02em}
-  .card .l{font-size:11.5px; color:var(--muted); text-transform:capitalize; display:flex; align-items:center; gap:6px}
-  .card .l::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--c,var(--i-default))}
-  /* presentation mode: hide aggregate numbers, keep filters usable */
-  body.present #subtitle, body.present #count{visibility:hidden}
-  body.present .card .n{display:none}
-  body.present .card{padding-top:14px; padding-bottom:14px}
-
-  /* upcoming interviews banner */
-  .upcoming{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px}
-  .upcoming .lead{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-right:2px}
-  .ivchip{display:inline-flex; align-items:center; gap:9px; background:var(--panel);
-    border:1px solid var(--line); border-left:3px solid var(--i-interviewing);
-    border-radius:10px; padding:7px 13px; font-size:12.5px; box-shadow:var(--shadow)}
-  .ivchip.soon{border-left-color:var(--i-needs_human); background:var(--accent-soft)}
-  .ivchip.past{opacity:.5}
-  .ivchip .co{font-weight:600}
-  .ivchip .dt{color:var(--i-interviewing); font-weight:600; font-variant-numeric:tabular-nums}
-  .ivchip.soon .dt{color:var(--i-needs_human)}
-  .ivchip.past .dt{color:var(--muted)}
-
-  /* search */
-  .toolbar{display:flex; gap:12px; align-items:center; margin-bottom:14px}
-  #q{
-    flex:1; background:var(--panel); color:var(--text); border:1px solid var(--line);
-    border-radius:10px; padding:11px 14px; font-size:14px; outline:none; transition:.15s;
-  }
-  #q:focus{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft)}
-  .count{color:var(--muted); font-size:13px; white-space:nowrap}
-
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 16px 60px}
+  /* header */
+  .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .brand{font-size:22px;font-weight:750;letter-spacing:-.02em}
+  .brand .dot{color:var(--accent)}
+  .sub{color:var(--ink-2);font-size:13.5px}
+  .spacer{flex:1}
+  .live{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2);font-size:12.5px}
+  .live .pulse{width:8px;height:8px;border-radius:50%;background:var(--good);
+    box-shadow:0 0 0 0 rgba(21,134,63,.5);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(21,134,63,.45)}70%{box-shadow:0 0 0 7px rgba(21,134,63,0)}100%{box-shadow:0 0 0 0 rgba(21,134,63,0)}}
+  .btn{border:1px solid var(--border);background:var(--surface);color:var(--ink);
+    padding:7px 12px;border-radius:10px;font-size:13px;cursor:pointer;font-family:inherit}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn:disabled{opacity:.5;cursor:default;border-color:var(--border);color:var(--ink-2)}
+  /* run bar */
+  .runbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .runbtns{display:flex;gap:8px;flex-wrap:wrap}
+  .btn.run{font-weight:600}
+  .runstatus{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);
+    border-radius:10px;padding:6px 12px;font-size:13px;box-shadow:var(--shadow)}
+  .runstatus[hidden]{display:none}
+  .spin{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);
+    border-radius:50%;animation:spin 1s linear infinite;flex:0 0 auto}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .logln{color:var(--muted);font-family:var(--mono);font-size:11px;max-width:420px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .btn.stop{color:var(--critical);border-color:color-mix(in srgb,var(--critical) 40%,transparent)}
+  body.present .runbar{display:none}
+  /* KPI tiles */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+  .tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:15px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .tile .n{font-size:30px;font-weight:760;letter-spacing:-.02em;line-height:1.05}
+  .tile .l{font-size:12.5px;color:var(--ink-2);margin-top:3px}
+  .tile .bar{position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}
+  .tile.good .bar{background:var(--good)} .tile.info .bar{background:var(--info)}
+  .tile.warning .bar{background:var(--warning)} .tile.critical .bar{background:var(--critical)}
+  .tile.good .n{color:var(--good)} .tile.critical .n{color:var(--critical)}
+  .tile.warning .n{color:var(--warning)}
+  /* layout: funnel + activity */
+  .grid{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;margin-bottom:18px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px 18px}
+  .panel h2{margin:0 0 2px;font-size:14px;font-weight:700;letter-spacing:-.01em}
+  .panel .hint{color:var(--muted);font-size:12px;margin:0 0 14px}
+  /* funnel bars */
+  .funnel{display:flex;flex-direction:column;gap:11px}
+  .frow{display:grid;grid-template-columns:96px 1fr auto;align-items:center;gap:10px}
+  .frow .fl{font-size:13px;color:var(--ink-2)}
+  .ftrack{height:14px;background:var(--surface-2);border-radius:7px;overflow:hidden}
+  .ffill{height:100%;border-radius:7px;background:var(--accent);min-width:3px;transition:width .5s ease}
+  .frow.applied .ffill{background:var(--info)} .frow.in_process .ffill{background:var(--warning)}
+  .frow.offer .ffill{background:var(--good)}
+  .frow .fn{font-variant-numeric:tabular-nums;font-weight:680;font-size:14px;min-width:54px;text-align:right}
+  .conv{font-size:11px;color:var(--muted);margin-left:6px}
+  /* activity feed */
+  .feed{display:flex;flex-direction:column;gap:2px;max-height:320px;overflow:auto}
+  .ev{display:flex;gap:10px;padding:9px 2px;border-bottom:1px solid var(--border)}
+  .ev:last-child{border-bottom:none}
+  .ev .dot{width:9px;height:9px;border-radius:50%;margin-top:6px;flex:0 0 auto;background:var(--neutral)}
+  .ev.good .dot{background:var(--good)} .ev.info .dot{background:var(--info)}
+  .ev.warning .dot{background:var(--warning)} .ev.critical .dot{background:var(--critical)}
+  .ev.accent .dot{background:var(--accent)} .ev.teal .dot{background:var(--teal)} .ev.violet .dot{background:var(--violet)}
+  .ev .txt{flex:1;min-width:0}
+  .ev .line{font-size:13.5px}
+  .ev .meta{font-size:11.5px;color:var(--muted);margin-top:1px;display:flex;gap:8px;flex-wrap:wrap}
+  .src{border:1px solid var(--border);border-radius:6px;padding:0 6px;font-size:10.5px;color:var(--ink-2)}
+  .src.email{color:var(--info);border-color:color-mix(in srgb,var(--info) 40%,transparent)}
+  .src.you,.src.dashboard{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
   /* table */
-  .tablewrap{border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:var(--shadow)}
-  .scroll{overflow-x:auto}
-  table{border-collapse:collapse; width:100%; min-width:1000px; table-layout:fixed}
-  col.c-company{width:12%} col.c-role{width:19%} col.c-loc{width:11%}
-  col.c-status{width:134px} col.c-score{width:60px} col.c-applied{width:92px}
-  col.c-files{width:11%} col.c-notes{width:22%}
-  .nextline{margin-top:7px; font-size:11.5px; font-weight:600; color:var(--i-interviewing);
-    font-variant-numeric:tabular-nums; white-space:nowrap; display:flex; align-items:center; gap:5px}
-  .nextline::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor; flex:none}
-  .nextline.past{color:var(--muted-2); font-weight:500}
-  thead th{
-    position:sticky; top:0; z-index:2; background:var(--panel-2); color:var(--muted);
-    font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em;
-    text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); white-space:nowrap;
-  }
-  tbody td{padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top; font-size:13.5px}
-  tbody tr:last-child td{border-bottom:none}
-  tbody tr{transition:background .12s}
-  tbody tr:hover{background:rgba(255,255,255,.018)}
-
-  /* --- per-job phase history (timeline) --- */
-  .hbtn{background:none;border:none;color:var(--muted,#8a8f98);cursor:pointer;font-size:12px;
-        padding:0 6px 0 0;line-height:1;transition:color .12s}
-  .hbtn:hover{color:var(--fg,#e6e6e6)}
-  tr.history-row:hover{background:none}
-  .history-cell{background:rgba(255,255,255,.02);padding:14px 18px 16px 40px !important;border-bottom:1px solid var(--line) !important}
-  .history-body{max-width:900px}
-  .hloading{color:var(--muted,#8a8f98);font-size:12.5px}
-  .hreason{font-size:12.5px;color:var(--fg,#cfd2d6);margin-bottom:8px}
-  .hreason .hlbl{color:var(--muted,#8a8f98);text-transform:uppercase;font-size:10px;letter-spacing:.05em;margin-right:6px}
-  .hpartial{font-size:11.5px;color:var(--muted,#8a8f98);font-style:italic;margin-bottom:8px}
-  .hlist{list-style:none;margin:0;padding:0;border-left:1px solid var(--line);margin-left:4px}
-  .hitem{position:relative;padding:5px 0 5px 16px;font-size:12.5px;line-height:1.5}
-  .hdot{position:absolute;left:-4px;top:11px;width:7px;height:7px;border-radius:50%;
-        background:var(--muted,#8a8f98);box-shadow:0 0 0 3px var(--bg,#0c0d10)}
-  .hdot.app{background:var(--accent,#6ea8fe)}
-  .hwhen{color:var(--muted,#8a8f98);font-variant-numeric:tabular-nums;margin-right:10px;font-size:11.5px}
-  .hmain{color:var(--fg,#e6e6e6)}
-  .hlist .pill{display:inline-block;padding:1px 7px;border-radius:10px;background:rgba(255,255,255,.06);
-        font-size:11px;text-transform:capitalize}
-  .harrow{margin:0 5px;color:var(--muted,#8a8f98)}
-  .hsrc{margin-left:8px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#8a8f98);
-        border:1px solid var(--line);border-radius:4px;padding:0 5px}
-  .hann{margin-left:8px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#8a8f98)}
-  .hbadge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px}
-  .hbadge.real{background:rgba(110,168,254,.18);color:#a9c8ff}
-  .hbadge.dry{background:rgba(255,255,255,.06);color:var(--muted,#8a8f98)}
-  .hstat{color:var(--muted,#9aa0a8);text-transform:capitalize}
-  .hnote{display:block;color:var(--fg,#c7cad0);margin-top:2px;font-size:12px}
-  .haddnote{display:flex;gap:8px;margin-top:12px}
-  .hnote-in{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:6px;
-        color:var(--fg,#e6e6e6);padding:6px 9px;font-size:12.5px;font-family:inherit}
-  .hnote-in:focus{outline:none;border-color:var(--accent,#6ea8fe)}
-  .hadd{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:6px;
-        color:var(--fg,#e6e6e6);padding:6px 12px;font-size:12.5px;cursor:pointer}
-  .hadd:hover{background:rgba(255,255,255,.1)}
-  td.company{font-weight:600; word-break:break-word}
-  td.role{color:#d4d9e4; word-break:break-word}
-  td.loc{color:var(--muted); font-size:12.5px; word-break:break-word}
-  td.score{color:var(--muted); text-align:center; font-variant-numeric:tabular-nums}
-  td.applied{color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; font-size:12.5px}
-  td.num{text-align:center}
-
-  /* status select styled as pill */
-  .status-sel{
-    appearance:none; border:none; border-radius:20px; padding:4px 26px 4px 12px; font-size:11.5px;
-    font-weight:600; cursor:pointer; color:#fff; letter-spacing:.01em;
-    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='white'><path d='M7 10l5 5 5-5z'/></svg>");
-    background-repeat:no-repeat; background-position:right 8px center;
-  }
-  .status-sel:focus{outline:2px solid rgba(255,255,255,.4); outline-offset:1px}
-  .status-sel option{background:var(--panel); color:var(--text)}
-
-  /* links */
-  .links{display:flex; flex-wrap:wrap; gap:4px 8px}
-  .links a{color:var(--accent); text-decoration:none; font-size:12px; white-space:nowrap}
-  .links a:hover{text-decoration:underline}
-  .links .none{color:var(--muted-2); font-size:12px}
-
-  /* editable note */
-  .note{
-    width:100%; min-width:0; background:transparent; color:#cfd5e0; border:1px solid transparent;
-    border-radius:8px; padding:6px 8px; font:inherit; font-size:12.5px; resize:vertical; min-height:34px;
-    max-height:120px; line-height:1.45; transition:.15s; display:block;
-  }
-  .note:hover{border-color:var(--line)}
-  .note:focus{outline:none; border-color:var(--accent); background:var(--panel)}
-
-  /* toast */
-  #toast{
-    position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px);
-    background:#11331f; color:#7be6a8; border:1px solid #1f5c38; padding:10px 18px;
-    border-radius:10px; font-size:13px; opacity:0; pointer-events:none; transition:.25s; z-index:50;
-  }
-  #toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
-  #toast.err{background:#3a1416; color:#f0a0a6; border-color:#6e2429}
-  .empty{padding:60px; text-align:center; color:var(--muted)}
+  .toolbar{display:flex;align-items:center;gap:10px;margin:4px 0 10px}
+  #q{flex:1;max-width:420px;border:1px solid var(--border);background:var(--surface);color:var(--ink);
+    border-radius:10px;padding:9px 12px;font-size:14px;font-family:inherit}
+  #q:focus{outline:none;border-color:var(--accent)}
+  .count{color:var(--muted);font-size:12.5px}
+  .tablewrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    font-weight:650;position:sticky;top:0;background:var(--surface);z-index:1}
+  tr:last-child td{border-bottom:none}
+  td.co{font-weight:640} td.role{color:var(--ink-2)}
+  .pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;
+    font-size:12px;font-weight:600;border:1px solid transparent;white-space:nowrap}
+  .pill.accent{background:var(--accent-soft);color:var(--accent)}
+  .pill.good{background:color-mix(in srgb,var(--good) 14%,transparent);color:var(--good)}
+  .pill.info{background:color-mix(in srgb,var(--info) 14%,transparent);color:var(--info)}
+  .pill.warning{background:color-mix(in srgb,var(--warning) 16%,transparent);color:var(--warning)}
+  .pill.critical{background:color-mix(in srgb,var(--critical) 14%,transparent);color:var(--critical)}
+  .pill.teal{background:color-mix(in srgb,var(--teal) 16%,transparent);color:var(--teal)}
+  .pill.violet{background:color-mix(in srgb,var(--violet) 16%,transparent);color:var(--violet)}
+  .pill.neutral{background:var(--surface-2);color:var(--ink-2)}
+  .links{display:flex;gap:7px;flex-wrap:wrap}
+  .lnk{font-size:11.5px;color:var(--ink-2);border:1px solid var(--border);border-radius:6px;padding:1px 6px}
+  .lnk:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+  .none{color:var(--muted)}
+  .noteinput{width:100%;min-width:140px;border:1px solid transparent;background:transparent;color:var(--ink-2);
+    font-family:inherit;font-size:12.5px;line-height:1.35;border-radius:7px;padding:4px 6px;resize:vertical;
+    overflow:hidden}
+  .noteinput:hover{border-color:var(--border)}
+  .noteinput:focus{outline:none;border-color:var(--accent);background:var(--surface);color:var(--ink)}
+  .noteinput::placeholder{color:var(--muted)}
+  .nextline{font-size:11.5px;color:var(--info);margin-top:3px}
+  .nextline.past{color:var(--critical)}
+  .empty{color:var(--muted);text-align:center;padding:26px}
+  /* present mode: hide the aggregate numbers for a shoulder-surf-safe view */
+  body.present .kpis,body.present .panel.funnel-panel,body.present .count{display:none}
+  #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);
+    color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;
+    transition:opacity .2s}
+  #toast.show{opacity:.96}
+  @media (max-width:980px){ .c-notes{display:none} }
+  @media (max-width:860px){ .kpis{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr}
+    .c-loc,.c-files{display:none} }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <h1>honestapply<span class="dot">.</span></h1>
+    <span class="brand">honestapply<span class="dot">.</span></span>
     <span class="sub" id="subtitle">loading…</span>
     <span class="spacer"></span>
-    <button class="btn" onclick="togglePresent()">🙈 Present</button>
-    <button class="btn" onclick="load()">↻ Refresh</button>
+    <span class="live"><span class="pulse"></span><span id="livelabel">live</span></span>
+    <button class="btn" onclick="togglePresent()" id="presentBtn">🙈 Present</button>
+    <button class="btn" onclick="refreshAll()">↻ Refresh</button>
   </header>
 
-  <div class="cards" id="cards"></div>
+  <!-- run control -->
+  <section class="runbar">
+    <div class="runbtns">
+      <button class="btn run" onclick="startRun('discover')">🔎 Find jobs</button>
+      <button class="btn run" onclick="startRun('prepare')">⚙️ Prepare</button>
+      <button class="btn run" onclick="startRun('apply_dry')" title="Dry-run: fills forms but never submits">📝 Apply (dry-run)</button>
+    </div>
+    <div class="runstatus" id="runstatus" hidden></div>
+  </section>
 
-  <div class="upcoming" id="upcoming" hidden></div>
+  <!-- headline numbers -->
+  <section class="kpis" id="kpis"></section>
+
+  <section class="grid">
+    <div class="panel funnel-panel">
+      <h2>Your pipeline</h2>
+      <p class="hint">Where every job stands right now — honestapply sources widely and applies selectively.</p>
+      <div class="funnel" id="funnel"></div>
+    </div>
+    <div class="panel">
+      <h2>Recent activity</h2>
+      <p class="hint">What just happened — updated live.</p>
+      <div class="feed" id="feed"><div class="empty">loading…</div></div>
+    </div>
+  </section>
 
   <div class="toolbar">
-    <input id="q" placeholder="Search company, role, location, notes…" autocomplete="off">
+    <input id="q" placeholder="Search company, role, location…" autocomplete="off" oninput="renderTable()">
     <span class="count" id="count"></span>
   </div>
-
   <div class="tablewrap">
-    <div class="scroll">
-      <table>
-        <colgroup>
-          <col class="c-company"><col class="c-role"><col class="c-loc"><col class="c-status">
-          <col class="c-score"><col class="c-applied"><col class="c-files"><col class="c-notes">
-        </colgroup>
-        <thead><tr>
-          <th>Company</th><th>Role</th><th>Location</th><th>Status</th>
-          <th class="num">Score</th><th>Applied</th><th>Files</th><th>Notes</th>
-        </tr></thead>
-        <tbody id="rows"><tr><td colspan="8" class="empty">loading…</td></tr></tbody>
-      </table>
-    </div>
+    <table>
+      <colgroup><col><col><col class="c-loc"><col><col class="num"><col><col class="c-notes"><col class="c-files"></colgroup>
+      <thead><tr>
+        <th>Company</th><th>Role</th><th class="c-loc">Location</th><th>Status</th>
+        <th class="num">Fit</th><th>Applied</th><th class="c-notes">Notes</th><th class="c-files">Files</th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="8" class="empty">loading…</td></tr></tbody>
+    </table>
   </div>
 </div>
 <div id="toast"></div>
 
 <script>
-// Statuses selectable from the dashboard (manual outcome tracking).
-const STATUSES = ["applied","screening","interviewing","offer","rejected","ghosted",
-                  "needs_human","covered","tailored","failed"];
-// Order for cards + sorting: active/positive first.
-const ORDER = {interviewing:0, offer:1, screening:2, applied:3, needs_human:4,
-               covered:5, tailored:6, rejected:7, ghosted:8, failed:9};
-const COLOR = s => getComputedStyle(document.documentElement)
-                    .getPropertyValue('--i-'+s).trim() || 'var(--i-default)';
+const esc = s => (s??'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let DATA = [];
 
-let DATA = [], filter = null;
+// --- plain-language mapping for raw statuses -------------------------------
+const LABEL = {
+  discovered:'Found', enriched:'Preparing', scored:'Preparing', tailored:'Preparing',
+  covered:'Ready', ready_to_apply:'Ready', applied:'Applied', dry_run_completed:'Applied (test)',
+  screening:'Screening', interviewing:'Interviewing', offer:'Offer 🎉', rejected:'Not selected',
+  ghosted:'No response', needs_human:'Needs you', failed:'Failed',
+  skipped_low_fit:'Skipped', skipped_company_cap:'Skipped',
+};
+const TONE = {
+  offer:'good', interviewing:'violet', screening:'teal', applied:'accent', dry_run_completed:'accent',
+  needs_human:'warning', rejected:'critical', failed:'critical',
+  ghosted:'neutral', skipped_low_fit:'neutral', skipped_company_cap:'neutral',
+};
+const lbl = s => LABEL[s] || (s||'').replace(/_/g,' ');
+const tone = s => TONE[s] || 'neutral';
 
-function toast(msg, err){
-  const t=document.getElementById('toast');
-  t.textContent=msg; t.className='show'+(err?' err':'');
-  clearTimeout(t._h); t._h=setTimeout(()=>t.className='',1900);
-}
-
-function link(href,txt){ return `<a href="${href}" target="_blank" rel="noopener">${txt}</a>`; }
-
-function fileLinks(r){
-  const k=r.links||{}, out=[];
-  if(r.url) out.push(link(r.url,'posting'));
-  if(k.jd) out.push(link('/jd/'+r.job_id,'JD'));
-  if(k.resume) out.push(link('/files/'+r.job_id+'/resume','CV'));
-  if(k.cover) out.push(link('/files/'+r.job_id+'/cover','cover'));
-  if(k.answers) out.push(link('/answers/'+r.job_id,'answers'));
-  if(k.post_shot) out.push(link('/files/'+r.job_id+'/post_shot','shot'));
-  else if(k.pre_shot) out.push(link('/files/'+r.job_id+'/pre_shot','shot'));
-  return out.length? `<div class="links">${out.join('')}</div>` : '<span class="links"><span class="none">—</span></span>';
-}
-
-// The interview date lives as a small line under the status pill.
-function statusCell(r){
-  let extra='';
-  if(r.next_interview){
-    const nowIso = new Date().toISOString().slice(0,16);
-    const past = r.next_interview_iso && r.next_interview_iso < nowIso;
-    extra = `<div class="nextline${past?' past':''}">${esc(r.next_interview)}</div>`;
-  }
-  return statusSelect(r) + extra;
-}
-
-// Banner: only genuinely upcoming interviews — dated and in the future,
-// soonest first. TBD/past are left out so it stays a clean "what's next".
-function renderUpcoming(){
-  const nowIso = new Date().toISOString().slice(0,16);
-  const up = DATA
-    .filter(r=>r.next_interview_iso && r.next_interview_iso >= nowIso)
-    .sort((a,b)=>a.next_interview_iso.localeCompare(b.next_interview_iso));
-  const el = document.getElementById('upcoming');
-  if(!up.length){ el.hidden=true; el.innerHTML=''; return; }
-  el.hidden=false;
-  el.innerHTML = '<span class="lead">Next up</span>' + up.map((r,i)=>
-    `<span class="ivchip${i===0?' soon':''}" title="${esc(r.title)}">`
-      + `<span class="co">${esc(r.company)}</span><span class="dt">${esc(r.next_interview)}</span></span>`
-  ).join('');
-}
-
-function statusSelect(r){
-  // Show the job's actual status even if it's a pipeline-internal one that isn't
-  // in the manually-settable list (e.g. discovered, skipped_company_cap), so the
-  // row never silently mislabels itself as the first option.
-  const list = STATUSES.includes(r.status) || !r.status ? STATUSES : [r.status, ...STATUSES];
-  const opts = list.map(s=>`<option value="${s}" ${s===r.status?'selected':''}>${s.replace(/_/g,' ')}</option>`).join('');
-  return `<select class="status-sel" style="background-color:${COLOR(r.status)}"
-            data-id="${r.job_id}" onchange="setStatus(this)">${opts}</select>`;
-}
-
-async function patch(job_id, body){
-  const res = await fetch('/api/jobs/'+job_id, {
-    method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
-  });
-  if(!res.ok) throw new Error((await res.json()).detail || res.statusText);
-  return res.json();
-}
-
-async function setStatus(sel){
-  const id=+sel.dataset.id, status=sel.value;
-  try{
-    await patch(id, {status});
-    sel.style.backgroundColor = COLOR(status);
-    const row = DATA.find(r=>r.job_id===id); if(row) row.status=status;
-    renderCards(); renderUpcoming();
-    toast('→ '+status.replace('_',' '));
-  }catch(e){ toast('Failed: '+e.message, true); load(); }
-}
-
-async function saveNote(el){
-  const id=+el.dataset.id, notes=el.value.trim();
-  const row = DATA.find(r=>r.job_id===id);
-  if(row && (row.notes||'')===notes) return;      // no change
-  try{ await patch(id, {notes}); if(row) row.notes=notes; toast('note saved'); }
-  catch(e){ toast('Failed: '+e.message, true); }
-}
-
-function renderCards(){
-  const counts={}; DATA.forEach(r=>counts[r.status]=(counts[r.status]||0)+1);
-  const keys=Object.keys(counts).sort((a,b)=>(ORDER[a]??99)-(ORDER[b]??99));
-  const all=`<div class="card ${filter===null?'active':''}" onclick="setFilter(null)">
-      <div class="n">${DATA.length}</div><div class="l" style="--c:var(--accent)">all</div></div>`;
-  document.getElementById('cards').innerHTML = all + keys.map(s=>`
-    <div class="card ${filter===s?'active':''}" onclick="setFilter('${s}')">
-      <div class="n">${counts[s]}</div>
-      <div class="l" style="--c:${COLOR(s)}">${s.replace('_',' ')}</div>
-    </div>`).join('');
-}
-
-function setFilter(s){ filter = (filter===s? null : s); renderCards(); renderRows(); }
-
-function togglePresent(){ document.body.classList.toggle('present'); }
-(function(){ if(new URLSearchParams(location.search).get('present')==='1') document.body.classList.add('present'); })();
-
-function renderRows(){
-  const q=document.getElementById('q').value.toLowerCase();
-  let rows=DATA.slice();
-  if(filter) rows=rows.filter(r=>r.status===filter);
-  if(q) rows=rows.filter(r=>((r.company+' '+r.title+' '+r.location+' '+r.status+' '+(r.notes||'')).toLowerCase().includes(q)));
-  rows.sort((a,b)=>(ORDER[a.status]??99)-(ORDER[b.status]??99)
-                   || (b.applied_at||'').localeCompare(a.applied_at||''));
-  document.getElementById('count').textContent = rows.length+' of '+DATA.length;
-  const tb=document.getElementById('rows');
-  if(!rows.length){ tb.innerHTML='<tr><td colspan="8" class="empty">no matches</td></tr>'; return; }
-  tb.innerHTML = rows.map(r=>`
-    <tr data-jobrow="${r.job_id}">
-      <td class="company"><button class="hbtn" onclick="toggleHistory(${r.job_id}, this)" aria-expanded="false" title="Show phase history">▸</button>${esc(r.company)}</td>
-      <td class="role">${esc(r.title)}</td>
-      <td class="loc">${esc(r.location)||'—'}</td>
-      <td>${statusCell(r)}</td>
-      <td class="score num">${r.score??''}</td>
-      <td class="applied">${r.applied_at||'—'}</td>
-      <td>${fileLinks(r)}</td>
-      <td><textarea class="note" rows="1" data-id="${r.job_id}"
-            onblur="saveNote(this)" placeholder="add a note…">${esc(r.notes||'')}</textarea></td>
-    </tr>`).join('');
-}
-
-function esc(s){ return (s??'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-// --- Per-job phase history (timeline) --------------------------------------
-// Expands a row into its job_events (status transitions) interleaved with its
-// application rows (submissions), so you can see which phases a job moved
-// through and when. Append-only: you can add a note, never edit/delete history.
-async function toggleHistory(jobId, btn){
-  const tr = btn.closest('tr');
-  const next = tr.nextElementSibling;
-  if(next && next.classList.contains('history-row')){
-    next.remove(); btn.textContent='▸'; btn.setAttribute('aria-expanded','false'); return;
-  }
-  btn.textContent='▾'; btn.setAttribute('aria-expanded','true');
-  const detail = document.createElement('tr');
-  detail.className='history-row';
-  detail.innerHTML = `<td colspan="8" class="history-cell"><div class="history-body"><div class="hloading">loading history…</div></div></td>`;
-  tr.after(detail);
-  await loadHistory(jobId, detail.querySelector('.history-body'));
-}
-
-async function loadHistory(jobId, box){
-  const row = DATA.find(r=>r.job_id===jobId) || {};
-  try{
-    const items = await fetch('/api/jobs/'+jobId+'/events').then(r=>r.json());
-    box.innerHTML = renderTimeline(jobId, items, row);
-  }catch(e){ box.innerHTML='<div class="hloading">failed to load history</div>'; }
-}
-
-function fmtLocal(iso){
+function rel(iso){
   if(!iso) return '';
-  // Stored timestamps are naive UTC; append Z so the browser converts to local.
-  const d = new Date(/[zZ]|[+\-]\d\d:?\d\d$/.test(iso) ? iso : iso+'Z');
-  return isNaN(d) ? esc(iso) : d.toLocaleString([], {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  const d=new Date(iso), now=new Date(), s=(now-d)/1000;
+  if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<86400) return Math.floor(s/3600)+'h ago';
+  if(s<172800) return 'yesterday';
+  if(s<604800) return Math.floor(s/86400)+'d ago';
+  return d.toLocaleDateString();
 }
 
-function renderTimeline(jobId, items, row){
-  let head='';
-  if(row.status_reason) head += `<div class="hreason"><span class="hlbl">status reason</span> ${esc(row.status_reason)}</div>`;
-  const firstStatus = items.find(it=>it.kind==='status');
-  if(!items.length || (firstStatus && firstStatus.from)){
-    const from = firstStatus && firstStatus.at ? fmtLocal(firstStatus.at) : null;
-    head += `<div class="hpartial">${from? 'history recorded from '+from+' — earlier transitions predate the log' : 'no history recorded for this job yet'}</div>`;
-  }
-  const list = items.map(it=>{
-    const when = `<span class="hwhen">${fmtLocal(it.at)}</span>`;
-    if(it.kind==='application'){
-      const mode = it.mode==='real'
-        ? '<span class="hbadge real">real submission</span>'
-        : `<span class="hbadge dry">${esc(it.mode||'dry run')}</span>`;
-      const shot = it.shot_kind ? ' '+link('/files/app/'+it.id+'/'+it.shot_kind,'shot') : '';
-      return `<li class="hitem"><span class="hdot app"></span>${when}<span class="hmain">${mode}${it.status?` <span class="hstat">${esc(it.status)}</span>`:''}${shot}${it.note?`<span class="hnote">${esc(it.note)}</span>`:''}</span></li>`;
-    }
-    const toPill = `<span class="pill">${esc((it.to||'').replace(/_/g,' '))}</span>`;
-    let trans;
-    if(it.from === it.to){                       // same-status marker: a note on the timeline
-      trans = `${toPill}<span class="hann">note</span>`;
-    }else if(it.from){                            // a real transition
-      trans = `<span class="pill">${esc((it.from||'').replace(/_/g,' '))}</span><span class="harrow">→</span>${toPill}`;
-    }else{                                        // initial state (no prior status)
-      trans = toPill;
-    }
-    const src = `<span class="hsrc">${esc(it.source||'')}</span>`;
-    return `<li class="hitem"><span class="hdot"></span>${when}<span class="hmain">${trans} ${src}${it.note?`<span class="hnote">${esc(it.note)}</span>`:''}</span></li>`;
+// --- KPIs + funnel ---------------------------------------------------------
+async function loadFunnel(){
+  const f = await (await fetch('/api/funnel')).json();
+  const bs = f.by_status||{};
+  const g = (...k)=>k.reduce((a,x)=>a+(bs[x]||0),0);
+  const sent = g('applied','dry_run_completed','screening','interviewing','offer','rejected','ghosted');
+  const kpis = [
+    {n:f.total, l:'Jobs found', t:''},
+    {n:sent, l:'Applications sent', t:'accent'},
+    {n:g('screening','interviewing'), l:'In process', t:'info'},
+    {n:g('offer'), l:'Offers', t:'good'},
+    {n:g('needs_human'), l:'Needs you', t:'warning'},
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(k=>
+    `<div class="tile ${k.t}"><div class="bar"></div><div class="n">${k.n.toLocaleString()}</div><div class="l">${k.l}</div></div>`).join('');
+
+  const max = Math.max(1, ...f.stages.map(s=>s.count));
+  document.getElementById('funnel').innerHTML = f.stages.map((s,i)=>{
+    const prev = i>0 ? f.stages[i-1].count : null;
+    const conv = (prev && prev>0) ? `<span class="conv">${Math.round(s.count/prev*100)}%</span>` : '';
+    const w = Math.max(2, s.count/max*100);
+    return `<div class="frow ${s.key}"><div class="fl">${esc(s.label)}</div>`
+      + `<div class="ftrack"><div class="ffill" style="width:${w}%"></div></div>`
+      + `<div class="fn">${s.count.toLocaleString()}${conv}</div></div>`;
   }).join('');
-  return `${head}<ul class="hlist">${list||'<li class="hitem"><span class="hmain">no events</span></li>'}</ul>
-    <div class="haddnote">
-      <input class="hnote-in" type="text" placeholder="add a note to the history…"
-        onkeydown="if(event.key==='Enter')addHistoryNote(${jobId}, this)">
-      <button class="hadd" onclick="addHistoryNote(${jobId}, this.previousElementSibling)">Add note</button>
-    </div>`;
 }
 
-async function addHistoryNote(jobId, input){
-  const note = (input.value||'').trim();
-  if(!note) return;
-  try{
-    const res = await fetch('/api/jobs/'+jobId+'/events', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({note})
-    });
-    if(!res.ok) throw new Error((await res.json()).detail || res.statusText);
-    input.value='';
-    await loadHistory(jobId, input.closest('.history-body'));
-    toast('note added to history');
-  }catch(e){ toast('Failed: '+e.message, true); }
-}
-
-async function load(){
-  try{
-    const [apps,sum] = await Promise.all([
-      fetch('/api/applications').then(r=>r.json()),
-      fetch('/api/summary').then(r=>r.json()).catch(()=>null),
-    ]);
-    DATA=apps;
-    document.getElementById('subtitle').textContent =
-      `${DATA.length} tracked • ${(sum&&sum.by_status&&sum.by_status.interviewing)||DATA.filter(r=>r.status==='interviewing').length} interviewing`;
-    renderCards(); renderUpcoming(); renderRows();
-  }catch(e){
-    document.getElementById('rows').innerHTML='<tr><td colspan="8" class="empty">failed to load API</td></tr>';
+// --- activity feed ---------------------------------------------------------
+function sentence(e){
+  const co = esc(e.company||'a company'); const role = e.title? ` · ${esc(e.title)}`:'';
+  switch(e.to){
+    case 'applied': return `Applied to <b>${co}</b>${role}`;
+    case 'dry_run_completed': return `Prepared & test-filled <b>${co}</b>`;
+    case 'screening': return `Screening started — <b>${co}</b>`;
+    case 'interviewing': return `Interview — <b>${co}</b>`;
+    case 'offer': return `🎉 Offer from <b>${co}</b>`;
+    case 'rejected': return `Not selected — <b>${co}</b>`;
+    case 'ghosted': return `No response — <b>${co}</b>`;
+    case 'needs_human': return `Needs your input — <b>${co}</b>`;
+    default: return `<b>${co}</b>: ${lbl(e.from)} → ${lbl(e.to)}`;
   }
 }
-document.getElementById('q').addEventListener('input', renderRows);
-load();
+const SRC = {pipeline:'auto', email:'email', dashboard:'you', human:'you'};
+async function loadFeed(){
+  const raw = await (await fetch('/api/activity?limit=60')).json();
+  // Drop no-op churn (e.g. enriched->scored->tailored all read as "Preparing").
+  const evs = raw.filter(e => lbl(e.from) !== lbl(e.to)).slice(0,40);
+  const el = document.getElementById('feed');
+  if(!evs.length){ el.innerHTML='<div class="empty">No activity yet.</div>'; return; }
+  el.innerHTML = evs.map(e=>{
+    const src = SRC[e.source]||e.source||'';
+    return `<div class="ev ${tone(e.to)}"><div class="dot"></div><div class="txt">`
+      + `<div class="line">${sentence(e)}</div>`
+      + `<div class="meta"><span>${rel(e.at)}</span>`
+      + (src?`<span class="src ${esc(e.source)}">${esc(src)}</span>`:'')
+      + (e.note?`<span>· ${esc(e.note).slice(0,70)}</span>`:'')
+      + `</div></div></div>`;
+  }).join('');
+}
+
+// --- table -----------------------------------------------------------------
+function statusSelect(r){
+  const opts = Object.keys(LABEL).map(s=>`<option value="${s}"${s===r.status?' selected':''}>${lbl(s)}</option>`).join('');
+  return `<select class="pill ${tone(r.status)}" style="border:none;cursor:pointer"
+    onchange="setStatus(${r.job_id},this.value)">${opts}</select>`;
+}
+function fileLinks(r){
+  const L=r.links||{}; const out=[];
+  if(L.jd) out.push(`<a class="lnk" href="/jd/${r.job_id}" target="_blank">JD</a>`);
+  if(L.resume) out.push(`<a class="lnk" href="/files/${r.job_id}/resume" target="_blank">CV</a>`);
+  if(L.cover) out.push(`<a class="lnk" href="/files/${r.job_id}/cover" target="_blank">Cover</a>`);
+  if(L.post_shot) out.push(`<a class="lnk" href="/files/${r.job_id}/post_shot" target="_blank">Proof</a>`);
+  if(r.url) out.push(`<a class="lnk" href="${esc(r.url)}" target="_blank">Posting</a>`);
+  return out.length? `<div class="links">${out.join('')}</div>` : '<span class="none">—</span>';
+}
+const TABLE_CAP = 80;
+function renderTable(){
+  const q=(document.getElementById('q').value||'').toLowerCase();
+  const matched = DATA.filter(r=>!q || `${r.company} ${r.title} ${r.location} ${r.notes}`.toLowerCase().includes(q));
+  const rows = matched.slice(0, TABLE_CAP);
+  document.getElementById('count').textContent = matched.length>TABLE_CAP
+    ? `showing ${TABLE_CAP} of ${matched.length} — search to narrow`
+    : `${matched.length} shown`;
+  const tb=document.getElementById('rows');
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="8" class="empty">No matching applications.</td></tr>'; return; }
+  tb.innerHTML = rows.map(r=>{
+    let nxt='';
+    if(r.next_interview){ const past=r.next_interview_iso && new Date(r.next_interview_iso)<new Date();
+      nxt=`<div class="nextline${past?' past':''}">📅 ${esc(r.next_interview)}</div>`; }
+    return `<tr>
+      <td class="co">${esc(r.company)}</td>
+      <td class="role">${esc(r.title)}${nxt}</td>
+      <td class="c-loc">${esc(r.location)||'<span class="none">—</span>'}</td>
+      <td>${statusSelect(r)}</td>
+      <td class="num">${r.score??'<span class="none">—</span>'}</td>
+      <td>${esc(r.applied_at)||'<span class="none">—</span>'}</td>
+      <td class="c-notes"><textarea class="noteinput" rows="1" placeholder="add a note…"
+        title="${esc(r.status_reason)}" onchange="saveNote(${r.job_id},this.value)">${esc(r.notes)}</textarea></td>
+      <td class="c-files">${fileLinks(r)}</td>
+    </tr>`;
+  }).join('');
+}
+async function saveNote(job_id, notes){
+  try{ await fetch('/api/jobs/'+job_id,{method:'PATCH',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({notes})}); toast('Note saved'); }
+  catch(e){ toast('Could not save note'); }
+}
+async function loadTable(){
+  DATA = await (await fetch('/api/applications')).json();
+  document.getElementById('subtitle').textContent =
+    `${DATA.length.toLocaleString()} applications tracked`;
+  renderTable();
+}
+async function setStatus(job_id, status){
+  try{
+    await fetch('/api/jobs/'+job_id,{method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({status})});
+    toast('Updated'); refreshAll();
+  }catch(e){ toast('Could not update'); }
+}
+
+// --- present mode + refresh ------------------------------------------------
+function togglePresent(){
+  document.body.classList.toggle('present');
+  const on=document.body.classList.contains('present');
+  document.getElementById('presentBtn').textContent = on?'👁 Show':'🙈 Present';
+  try{ localStorage.setItem('ha_present', on?'1':''); }catch(e){}
+}
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),1600); }
+// --- run control -----------------------------------------------------------
+const STAGE_LABEL = {discover:'Finding jobs', prepare:'Preparing', apply_dry:'Applying (dry-run)'};
+let runPoll = null;
+async function startRun(stage){
+  try{
+    const r = await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage})});
+    if(r.status===409){ toast('A run is already in progress'); return; }
+    if(!r.ok){ toast('Could not start the run'); return; }
+    toast('Started: '+(STAGE_LABEL[stage]||stage)); pollRun();
+  }catch(e){ toast('Could not start the run'); }
+}
+async function stopRun(){ try{ await fetch('/api/run/stop',{method:'POST'}); }catch(e){} pollRun(); }
+function renderRun(s){
+  const el = document.getElementById('runstatus');
+  document.querySelectorAll('.btn.run').forEach(b=>b.disabled = s.running);
+  if(s.running){
+    const last = (s.log && s.log.length) ? s.log[s.log.length-1] : 'starting…';
+    el.hidden=false;
+    el.innerHTML = `<span class="spin"></span><b>${esc(STAGE_LABEL[s.stage]||s.stage)}…</b>`
+      + `<span class="logln">${esc(last)}</span>`
+      + `<button class="btn stop" onclick="stopRun()">Stop</button>`;
+  }else{
+    if(el.dataset.was==='1'){ toast(s.returncode===0?'Run finished ✓':'Run ended'); refreshAll(); }
+    el.hidden=true; el.innerHTML='';
+  }
+  el.dataset.was = s.running?'1':'';
+}
+async function pollRun(){
+  try{ renderRun(await (await fetch('/api/run')).json()); }catch(e){ return; }
+  if(runPoll){ clearInterval(runPoll); runPoll=null; }
+  runPoll = setInterval(async ()=>{
+    let s; try{ s = await (await fetch('/api/run')).json(); }catch(e){ return; }
+    renderRun(s);
+    if(!s.running){ clearInterval(runPoll); runPoll=null; }
+  }, 3000);
+}
+
+async function refreshAll(){
+  await Promise.all([loadFunnel(), loadFeed(), loadTable()]);
+}
+try{ if(localStorage.getItem('ha_present')) togglePresent(); }catch(e){}
+if(new URLSearchParams(location.search).get('present')==='1' && !document.body.classList.contains('present')) togglePresent();
+refreshAll();
+pollRun();
+setInterval(()=>{ loadFunnel(); loadFeed(); loadTable(); }, 15000);
 </script>
 </body>
 </html>

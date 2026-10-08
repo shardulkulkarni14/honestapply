@@ -14,13 +14,17 @@ Run via `honestapply dashboard` (uvicorn, default port 8501).
 from __future__ import annotations
 
 import re
-from datetime import datetime
+import subprocess
+import threading
+from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from sqlalchemy import func
 
 from honestapply.config import PATHS
 from honestapply.db.events import transition
@@ -196,6 +200,173 @@ def summary() -> dict:
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     return {"total": len(rows), "by_status": counts}
+
+
+# Plain-language pipeline stages (the funnel) and outcome buckets, each mapping to
+# a set of raw statuses. This is the non-technical "face" of the status taxonomy.
+_FUNNEL_STAGES = [
+    ("found", "Jobs found", ["discovered"]),
+    ("prepared", "Prepared", ["enriched", "scored", "tailored", "covered", "ready_to_apply"]),
+    ("applied", "Applied", ["applied", "dry_run_completed"]),
+    ("in_process", "In process", ["screening", "interviewing"]),
+    ("offer", "Offers", ["offer"]),
+]
+_OUTCOMES = [
+    ("offer", "Offers", ["offer"], "good"),
+    ("in_process", "In process", ["screening", "interviewing"], "info"),
+    ("needs_human", "Needs you", ["needs_human"], "warning"),
+    ("rejected", "Not selected", ["rejected"], "critical"),
+    ("ghosted", "No response", ["ghosted"], "muted"),
+    ("skipped", "Skipped", ["skipped_low_fit", "skipped_company_cap", "failed"], "muted"),
+]
+
+
+@app.get("/api/funnel")
+def funnel() -> dict:
+    """The pipeline as plain-language stages + outcome buckets, for the dashboard
+    face. Counts are of jobs currently in each status set."""
+    by_status: dict[str, int] = {}
+    with session_scope() as s:
+        for status, n in (
+            s.query(Job.status, func.count(Job.id)).group_by(Job.status).all()
+        ):
+            by_status[status] = n
+    total = sum(by_status.values())
+
+    def tally(statuses: list[str]) -> int:
+        return sum(by_status.get(st, 0) for st in statuses)
+
+    stages = [{"key": k, "label": lbl, "count": tally(sts)} for k, lbl, sts in _FUNNEL_STAGES]
+    outcomes = [
+        {"key": k, "label": lbl, "count": tally(sts), "tone": tone}
+        for k, lbl, sts, tone in _OUTCOMES
+    ]
+    return {"total": total, "stages": stages, "outcomes": outcomes, "by_status": by_status}
+
+
+# ---------------------------------------------------------------------------
+# Run control (Phase 2): start a pipeline stage as a background subprocess and
+# watch progress. Single-run only (apply is never parallel). Real submissions are
+# NOT triggerable here — the UI offers discover / prepare / apply-DRY-RUN only;
+# real applies stay on the CLI behind their confirm-first rule.
+# ---------------------------------------------------------------------------
+_RUN_STAGES = {
+    "discover": ["honestapply", "discover"],
+    "prepare": ["honestapply", "run"],
+    "apply_dry": ["honestapply", "apply", "--dry-run"],
+}
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+class _Runner:
+    def __init__(self) -> None:
+        self._proc: subprocess.Popen | None = None
+        self._stage: str | None = None
+        self._started: str | None = None
+        self._rc: int | None = None
+        self._lines: deque[str] = deque(maxlen=60)
+        self._lock = threading.Lock()
+
+    @property
+    def _running(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    def status(self) -> dict:
+        return {
+            "running": self._running,
+            "stage": self._stage,
+            "started_at": self._started,
+            "returncode": None if self._running else self._rc,
+            "log": list(self._lines)[-10:],
+        }
+
+    def start(self, stage: str) -> None:
+        if stage not in _RUN_STAGES:
+            raise ValueError(f"unknown stage {stage!r}")
+        with self._lock:
+            if self._running:
+                raise RuntimeError("a run is already in progress")
+            self._lines.clear()
+            self._stage, self._rc = stage, None
+            self._started = datetime.now(timezone.utc).isoformat()
+            self._proc = subprocess.Popen(  # noqa: S603 — fixed command set
+                _RUN_STAGES[stage],
+                cwd=str(ROOT),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            threading.Thread(target=self._pump, daemon=True).start()
+
+    def _pump(self) -> None:
+        assert self._proc is not None and self._proc.stdout is not None
+        for raw in self._proc.stdout:
+            line = _ANSI_RE.sub("", raw).rstrip()
+            if line:
+                self._lines.append(line[:300])
+        self._rc = self._proc.wait()
+
+    def stop(self) -> None:
+        if self._running and self._proc is not None:
+            self._proc.terminate()
+
+
+_RUNNER = _Runner()
+
+
+class RunReq(BaseModel):
+    stage: str
+
+
+@app.get("/api/run")
+def run_status() -> dict:
+    return _RUNNER.status()
+
+
+@app.post("/api/run")
+def run_start(req: RunReq) -> dict:
+    try:
+        _RUNNER.start(req.stage)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _RUNNER.status()
+
+
+@app.post("/api/run/stop")
+def run_stop() -> dict:
+    _RUNNER.stop()
+    return _RUNNER.status()
+
+
+@app.get("/api/activity")
+def activity(limit: int = 40) -> list[dict]:
+    """Recent status changes across all jobs, newest first — the live feed."""
+    limit = max(1, min(limit, 200))
+    out: list[dict] = []
+    with session_scope() as s:
+        q = (
+            s.query(JobEvent, Job)
+            .join(Job, Job.id == JobEvent.job_id)
+            .order_by(JobEvent.at.desc())
+            .limit(limit)
+        )
+        for ev, job in q.all():
+            out.append(
+                {
+                    "job_id": job.id,
+                    "company": job.company,
+                    "title": job.title,
+                    "from": ev.from_status,
+                    "to": ev.to_status,
+                    "source": ev.source,
+                    "note": ev.note,
+                    "at": ev.at.isoformat() if ev.at else None,
+                }
+            )
+    return out
 
 
 # ---------------------------------------------------------------------------

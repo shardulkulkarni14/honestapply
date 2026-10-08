@@ -56,6 +56,11 @@ _TRACKED_STATES = [
     Status.NEEDS_HUMAN,
 ]
 
+# Active, in-flight outcomes — always offered to the triage agent as candidates,
+# even if they've aged out of the recency cap (a job can sit in screening for
+# weeks). Missing a rejection/offer on one of these is the costliest miss.
+_ACTIVE_STATES = [Status.SCREENING, Status.INTERVIEWING, Status.OFFER]
+
 # event_type -> the status it implies.
 _EVENT_STATUS = {
     "application_received": Status.APPLIED,
@@ -179,16 +184,25 @@ def run_inbox(
 
     # 1. Shortlist candidate jobs + the message ids already ingested. Cap to the
     # most-recently-updated tracked jobs: inbound mail is almost always about a
-    # recent application, and an unbounded list bloats the prompt.
+    # recent application, and an unbounded list bloats the prompt. Active
+    # post-apply jobs (screening/interviewing/offer) are ALWAYS included,
+    # regardless of the recency cap — missing a rejection/offer on one of those is
+    # the worst failure, and a job can sit in screening for weeks (so it falls out
+    # of the most-recently-updated window) while still being exactly what an email
+    # is about.
     with session_scope() as s:
-        candidates = list(
+        active = list(
+            s.execute(select(Job).where(Job.status.in_(_ACTIVE_STATES))).scalars()
+        )
+        others = list(
             s.execute(
                 select(Job)
-                .where(Job.status.in_(_TRACKED_STATES))
+                .where(Job.status.in_(_TRACKED_STATES), Job.status.notin_(_ACTIVE_STATES))
                 .order_by(Job.updated_at.desc())
                 .limit(max_candidates)
             ).scalars()
         )
+        candidates = active + others
         company_by_id = {j.id: j.company for j in candidates}
         cand_ids = set(company_by_id)
         candidate_block = _candidate_lines(candidates)
