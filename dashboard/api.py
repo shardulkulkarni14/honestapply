@@ -4,9 +4,8 @@ One purpose: a single table with EVERYTHING per application, each cell linking
 to the locally-stored artifact (archived JD, tailored resume PDF, cover letter
 PDF, submitted form answers, confirmation screenshots, original posting).
 
-Serves the static Next.js export from dashboard/web/out at / when built
-(cd dashboard/web && npm install && npm run build), with a no-build fallback
-table so the dashboard works even without Node.
+Serves a single self-contained page (dashboard/index.html) at / — no build
+step, no Node, no bundler. The page talks to this JSON API directly.
 
 Run via `honestapply dashboard` (uvicorn, default port 8501).
 """

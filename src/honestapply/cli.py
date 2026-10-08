@@ -123,7 +123,7 @@ def doctor() -> None:
         ("Jinja2 (resume)", "jinja2", False),
         ("WeasyPrint (resume)", "weasyprint", False),
         ("python-jobspy (discover)", "jobspy", False),
-        ("Streamlit (dashboard)", "streamlit", False),
+        ("FastAPI (dashboard)", "fastapi", False),
         ("anthropic SDK (llm)", "anthropic", False),
     ]:
         ok = importable(mod)
