@@ -10,6 +10,7 @@
     --ink:#161b26; --ink-2:#555f70; --muted:#8a93a3; --border:#e4e8ef;
     --accent:#4f46e5; --accent-soft:#eef0fe;
     --good:#15863f; --info:#2563eb; --warning:#b45c09; --critical:#d22f2f; --neutral:#7b8595;
+    --teal:#0e8a8a; --violet:#7c3aed;
     --radius:14px; --shadow:0 1px 2px rgba(20,25,40,.04),0 4px 16px rgba(20,25,40,.05);
     --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
@@ -19,6 +20,7 @@
     --ink:#e9edf4; --ink-2:#a3adbd; --muted:#6c7686; --border:#272d39;
     --accent:#818cf8; --accent-soft:#1e2140;
     --good:#2bb561; --info:#4b8ef7; --warning:#e0912f; --critical:#f26d6d; --neutral:#5d6778;
+    --teal:#2cc2c2; --violet:#a78bfa;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 18px rgba(0,0,0,.28);
   }}
   :root[data-theme="dark"]{
@@ -26,6 +28,7 @@
     --ink:#e9edf4; --ink-2:#a3adbd; --muted:#6c7686; --border:#272d39;
     --accent:#818cf8; --accent-soft:#1e2140;
     --good:#2bb561; --info:#4b8ef7; --warning:#e0912f; --critical:#f26d6d; --neutral:#5d6778;
+    --teal:#2cc2c2; --violet:#a78bfa;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 18px rgba(0,0,0,.28);
   }
   *{box-sizing:border-box}
@@ -95,7 +98,7 @@
   .ev .dot{width:9px;height:9px;border-radius:50%;margin-top:6px;flex:0 0 auto;background:var(--neutral)}
   .ev.good .dot{background:var(--good)} .ev.info .dot{background:var(--info)}
   .ev.warning .dot{background:var(--warning)} .ev.critical .dot{background:var(--critical)}
-  .ev.accent .dot{background:var(--accent)}
+  .ev.accent .dot{background:var(--accent)} .ev.teal .dot{background:var(--teal)} .ev.violet .dot{background:var(--violet)}
   .ev .txt{flex:1;min-width:0}
   .ev .line{font-size:13.5px}
   .ev .meta{font-size:11.5px;color:var(--muted);margin-top:1px;display:flex;gap:8px;flex-wrap:wrap}
@@ -123,11 +126,19 @@
   .pill.info{background:color-mix(in srgb,var(--info) 14%,transparent);color:var(--info)}
   .pill.warning{background:color-mix(in srgb,var(--warning) 16%,transparent);color:var(--warning)}
   .pill.critical{background:color-mix(in srgb,var(--critical) 14%,transparent);color:var(--critical)}
+  .pill.teal{background:color-mix(in srgb,var(--teal) 16%,transparent);color:var(--teal)}
+  .pill.violet{background:color-mix(in srgb,var(--violet) 16%,transparent);color:var(--violet)}
   .pill.neutral{background:var(--surface-2);color:var(--ink-2)}
   .links{display:flex;gap:7px;flex-wrap:wrap}
   .lnk{font-size:11.5px;color:var(--ink-2);border:1px solid var(--border);border-radius:6px;padding:1px 6px}
   .lnk:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
   .none{color:var(--muted)}
+  .noteinput{width:100%;min-width:140px;border:1px solid transparent;background:transparent;color:var(--ink-2);
+    font-family:inherit;font-size:12.5px;line-height:1.35;border-radius:7px;padding:4px 6px;resize:vertical;
+    overflow:hidden}
+  .noteinput:hover{border-color:var(--border)}
+  .noteinput:focus{outline:none;border-color:var(--accent);background:var(--surface);color:var(--ink)}
+  .noteinput::placeholder{color:var(--muted)}
   .nextline{font-size:11.5px;color:var(--info);margin-top:3px}
   .nextline.past{color:var(--critical)}
   .empty{color:var(--muted);text-align:center;padding:26px}
@@ -137,6 +148,7 @@
     color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;
     transition:opacity .2s}
   #toast.show{opacity:.96}
+  @media (max-width:980px){ .c-notes{display:none} }
   @media (max-width:860px){ .kpis{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr}
     .c-loc,.c-files{display:none} }
 </style>
@@ -184,12 +196,12 @@
   </div>
   <div class="tablewrap">
     <table>
-      <colgroup><col><col><col class="c-loc"><col><col class="num"><col><col class="c-files"></colgroup>
+      <colgroup><col><col><col class="c-loc"><col><col class="num"><col><col class="c-notes"><col class="c-files"></colgroup>
       <thead><tr>
         <th>Company</th><th>Role</th><th class="c-loc">Location</th><th>Status</th>
-        <th class="num">Fit</th><th>Applied</th><th class="c-files">Files</th>
+        <th class="num">Fit</th><th>Applied</th><th class="c-notes">Notes</th><th class="c-files">Files</th>
       </tr></thead>
-      <tbody id="rows"><tr><td colspan="7" class="empty">loading…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="8" class="empty">loading…</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -208,7 +220,7 @@ const LABEL = {
   skipped_low_fit:'Skipped', skipped_company_cap:'Skipped',
 };
 const TONE = {
-  offer:'good', interviewing:'info', screening:'info', applied:'accent', dry_run_completed:'accent',
+  offer:'good', interviewing:'violet', screening:'teal', applied:'accent', dry_run_completed:'accent',
   needs_human:'warning', rejected:'critical', failed:'critical',
   ghosted:'neutral', skipped_low_fit:'neutral', skipped_company_cap:'neutral',
 };
@@ -309,7 +321,7 @@ function renderTable(){
     ? `showing ${TABLE_CAP} of ${matched.length} — search to narrow`
     : `${matched.length} shown`;
   const tb=document.getElementById('rows');
-  if(!rows.length){ tb.innerHTML='<tr><td colspan="7" class="empty">No matching applications.</td></tr>'; return; }
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="8" class="empty">No matching applications.</td></tr>'; return; }
   tb.innerHTML = rows.map(r=>{
     let nxt='';
     if(r.next_interview){ const past=r.next_interview_iso && new Date(r.next_interview_iso)<new Date();
@@ -321,9 +333,16 @@ function renderTable(){
       <td>${statusSelect(r)}</td>
       <td class="num">${r.score??'<span class="none">—</span>'}</td>
       <td>${esc(r.applied_at)||'<span class="none">—</span>'}</td>
+      <td class="c-notes"><textarea class="noteinput" rows="1" placeholder="add a note…"
+        title="${esc(r.status_reason)}" onchange="saveNote(${r.job_id},this.value)">${esc(r.notes)}</textarea></td>
       <td class="c-files">${fileLinks(r)}</td>
     </tr>`;
   }).join('');
+}
+async function saveNote(job_id, notes){
+  try{ await fetch('/api/jobs/'+job_id,{method:'PATCH',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({notes})}); toast('Note saved'); }
+  catch(e){ toast('Could not save note'); }
 }
 async function loadTable(){
   DATA = await (await fetch('/api/applications')).json();
