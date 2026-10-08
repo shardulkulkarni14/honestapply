@@ -106,11 +106,28 @@
   .src.email{color:var(--info);border-color:color-mix(in srgb,var(--info) 40%,transparent)}
   .src.you,.src.dashboard{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
   /* table */
-  .toolbar{display:flex;align-items:center;gap:10px;margin:4px 0 10px}
-  #q{flex:1;max-width:420px;border:1px solid var(--border);background:var(--surface);color:var(--ink);
+  .toolbar{display:flex;align-items:center;gap:10px;margin:4px 0 10px;flex-wrap:wrap}
+  #q{flex:0 1 300px;border:1px solid var(--border);background:var(--surface);color:var(--ink);
     border-radius:10px;padding:9px 12px;font-size:14px;font-family:inherit}
   #q:focus{outline:none;border-color:var(--accent)}
-  .count{color:var(--muted);font-size:12.5px}
+  .filters{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{border:1px solid var(--border);background:var(--surface);color:var(--ink-2);border-radius:999px;
+    padding:5px 11px;font-size:12.5px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  .chip.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chip .c{opacity:.7;margin-left:4px;font-variant-numeric:tabular-nums}
+  .spacer2{flex:1}
+  .count{color:var(--muted);font-size:12.5px;white-space:nowrap}
+  /* pagination */
+  .pager{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}
+  .pager .range{color:var(--muted);font-size:12.5px}
+  .pager .nav{display:flex;align-items:center;gap:6px}
+  .pager button{border:1px solid var(--border);background:var(--surface);color:var(--ink);border-radius:8px;
+    padding:6px 11px;font-size:13px;cursor:pointer;font-family:inherit}
+  .pager button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  .pager button:disabled{opacity:.4;cursor:default}
+  .pager .pageof{font-size:12.5px;color:var(--ink-2);min-width:96px;text-align:center}
+  body.present .pager .range{visibility:hidden}
   .tablewrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
     box-shadow:var(--shadow);overflow:hidden}
   table{width:100%;border-collapse:collapse;font-size:13.5px}
@@ -191,7 +208,9 @@
   </section>
 
   <div class="toolbar">
-    <input id="q" placeholder="Search company, role, location…" autocomplete="off" oninput="renderTable()">
+    <input id="q" placeholder="Search company, role…" autocomplete="off" oninput="onSearch()">
+    <div class="filters" id="filters"></div>
+    <span class="spacer2"></span>
     <span class="count" id="count"></span>
   </div>
   <div class="tablewrap">
@@ -204,6 +223,7 @@
       <tbody id="rows"><tr><td colspan="8" class="empty">loading…</td></tr></tbody>
     </table>
   </div>
+  <div class="pager" id="pager"></div>
 </div>
 <div id="toast"></div>
 
@@ -312,14 +332,53 @@ function fileLinks(r){
   if(r.url) out.push(`<a class="lnk" href="${esc(r.url)}" target="_blank">Posting</a>`);
   return out.length? `<div class="links">${out.join('')}</div>` : '<span class="none">—</span>';
 }
-const TABLE_CAP = 80;
+const PAGE_SIZE = 50;
+let curFilter = 'all';
+let page = 0;
+const FILTERS = [
+  {key:'all',         label:'All',          st:null},
+  {key:'in_process',  label:'In process',   st:['screening','interviewing']},
+  {key:'applied',     label:'Applied',      st:['applied','dry_run_completed']},
+  {key:'needs_human', label:'Needs you',    st:['needs_human']},
+  {key:'offer',       label:'Offers',       st:['offer']},
+  {key:'rejected',    label:'Not selected', st:['rejected']},
+  {key:'ghosted',     label:'No response',  st:['ghosted']},
+];
+function filterRows(){
+  const f = FILTERS.find(x=>x.key===curFilter) || FILTERS[0];
+  const q = (document.getElementById('q').value||'').toLowerCase();
+  return DATA.filter(r =>
+    (!f.st || f.st.includes(r.status)) &&
+    (!q || `${r.company} ${r.title} ${r.location} ${r.notes}`.toLowerCase().includes(q))
+  );
+}
+function renderFilters(){
+  document.getElementById('filters').innerHTML = FILTERS.map(f=>{
+    const n = f.st ? DATA.filter(r=>f.st.includes(r.status)).length : DATA.length;
+    return `<button class="chip ${f.key===curFilter?'active':''}" onclick="setFilter('${f.key}')">`
+      + `${esc(f.label)}<span class="c">${n}</span></button>`;
+  }).join('');
+}
+function setFilter(k){ curFilter=k; page=0; renderFilters(); renderTable(); }
+function onSearch(){ page=0; renderTable(); }
+function gotoPage(p){ page=p; renderTable();
+  const t=document.querySelector('.toolbar'); if(t) window.scrollTo({top:t.offsetTop-12,behavior:'smooth'}); }
+function renderPager(total, pages){
+  const el=document.getElementById('pager');
+  if(total<=PAGE_SIZE){ el.innerHTML = total? `<span class="range">${total} shown</span>` : ''; return; }
+  const from=page*PAGE_SIZE+1, to=Math.min((page+1)*PAGE_SIZE,total);
+  el.innerHTML = `<span class="range">${from}–${to} of ${total}</span>`
+    + `<span class="nav"><button ${page<=0?'disabled':''} onclick="gotoPage(${page-1})">‹ Prev</button>`
+    + `<span class="pageof">Page ${page+1} of ${pages}</span>`
+    + `<button ${page>=pages-1?'disabled':''} onclick="gotoPage(${page+1})">Next ›</button></span>`;
+}
 function renderTable(){
-  const q=(document.getElementById('q').value||'').toLowerCase();
-  const matched = DATA.filter(r=>!q || `${r.company} ${r.title} ${r.location} ${r.notes}`.toLowerCase().includes(q));
-  const rows = matched.slice(0, TABLE_CAP);
-  document.getElementById('count').textContent = matched.length>TABLE_CAP
-    ? `showing ${TABLE_CAP} of ${matched.length} — search to narrow`
-    : `${matched.length} shown`;
+  const matched = filterRows();
+  const pages = Math.max(1, Math.ceil(matched.length/PAGE_SIZE));
+  if(page>pages-1) page=pages-1; if(page<0) page=0;
+  const rows = matched.slice(page*PAGE_SIZE, (page+1)*PAGE_SIZE);
+  document.getElementById('count').textContent = `${matched.length} result${matched.length===1?'':'s'}`;
+  renderPager(matched.length, pages);
   const tb=document.getElementById('rows');
   if(!rows.length){ tb.innerHTML='<tr><td colspan="8" class="empty">No matching applications.</td></tr>'; return; }
   tb.innerHTML = rows.map(r=>{
@@ -348,6 +407,7 @@ async function loadTable(){
   DATA = await (await fetch('/api/applications')).json();
   document.getElementById('subtitle').textContent =
     `${DATA.length.toLocaleString()} applications tracked`;
+  renderFilters();
   renderTable();
 }
 async function setStatus(job_id, status){
