@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "honestapply"
-version = "0.1.0"
+version = "0.2.0"
 description = "Autonomous, CLI-driven job-application pipeline: discover -> enrich -> score -> tailor -> cover-letter -> apply."
 readme = "README.md"
 requires-python = ">=3.11"
