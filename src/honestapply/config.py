@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     # Gmail, behind the same dry-run/cap guards. See docs/ACCOUNTS.md.
     honestapply_enable_account_signup: bool = False
     honestapply_inbox_lookback_days: int = 30
+    # Hard wall-clock limit for one inbox triage-agent run. Wide windows / large
+    # inboxes can be slow; raise this if a sweep times out (default 15 min).
+    honestapply_inbox_timeout_seconds: int = 900
     # Cap how many applied/tracked jobs are offered to the triage agent as match
     # candidates, most-recently-updated first. Inbound mail is almost always about
     # a recent application, and an unbounded list (hundreds of old jobs) bloats the

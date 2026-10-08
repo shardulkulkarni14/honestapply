@@ -19,7 +19,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -79,16 +81,35 @@ def render_instructions(
     return template
 
 
-def run_triage_agent(instructions: str, *, timeout: int = 600) -> dict[str, Any]:
+def run_triage_agent(instructions: str, *, timeout: int | None = None) -> dict[str, Any]:
     """Spawn ``claude -p <instructions>`` (Gmail MCP available via .mcp.json) and
-    return the parsed result dict. Raises :class:`InboxAgentError` on failure."""
+    return the parsed result dict. Raises :class:`InboxAgentError` on failure.
+
+    Your email is **never written to disk**: the prompt forbids the agent from
+    downloading/saving anything, and — belt and braces — the Gmail MCP server's
+    download/attachment directories are jailed to a throwaway temp dir that is
+    wiped when the run ends, so even an attempted save can't land in your home."""
+    from honestapply.config import get_settings
+
+    if timeout is None:
+        timeout = getattr(get_settings(), "honestapply_inbox_timeout_seconds", 600)
     model = os.environ.get(_MODEL_ENV, _DEFAULT_MODEL)
+
+    jail = tempfile.mkdtemp(prefix="honestapply-gmail-")
+    env = {
+        **os.environ,
+        # @klodr/gmail-mcp path jails — any download/attachment write is confined
+        # here, and this dir is removed below, so nothing is left on disk.
+        "GMAIL_MCP_DOWNLOAD_DIR": jail,
+        "GMAIL_MCP_ATTACHMENT_DIR": jail,
+    }
     try:
         proc = subprocess.run(
             ["claude", "--dangerously-skip-permissions", "--model", model, "-p", instructions],
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
     except FileNotFoundError as exc:
         raise InboxAgentError(
@@ -97,6 +118,8 @@ def run_triage_agent(instructions: str, *, timeout: int = 600) -> dict[str, Any]
         ) from exc
     except subprocess.TimeoutExpired as exc:
         raise InboxAgentError(f"Gmail triage agent timed out after {timeout}s.") from exc
+    finally:
+        shutil.rmtree(jail, ignore_errors=True)
 
     return parse_result(proc.stdout or "")
 
