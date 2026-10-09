@@ -110,7 +110,10 @@ Newest at the bottom of each phase.
 
 ## Phase 7/8 — Dashboard, tests
 
-- Originally Streamlit; replaced (2026-06) by a FastAPI backend + optional Next.js static
-  export — one table linking every locally-stored artifact (JD, PDFs, answers, screenshots).
+- Originally Streamlit; replaced (2026-06) by a FastAPI backend serving a single
+  self-contained `dashboard/index.html` — one table linking every locally-stored artifact
+  (JD, PDFs, answers, screenshots). (historical) An optional Next.js static export under
+  `dashboard/web/` was carried for a while and dropped (2026-10) once the single-file page
+  covered every need.
 - (historical) Streamlit single-file; PDFs embedded as base64 iframes; stage buttons lazy-import so a
   missing/keyless stage never breaks page load. 13 pytest smoke tests, all green offline.
