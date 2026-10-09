@@ -66,7 +66,8 @@ def test_rails_are_checked_before_the_browser_agent_runs():
     from honestapply.stages import apply as apply_stage
 
     src = inspect.getsource(apply_stage)
-    call = src.index("_run_claude(instructions_text)")
+    # The agent is launched here (via _execute_agent); rails must precede it.
+    call = src.index("_execute_agent(job, job_url, instructions_text")
     for guard in ("dry_run_first_n", "effective_daily_cap", "rate_limit_seconds"):
         assert guard in src, f"{guard} guard missing entirely"
         assert src.index(guard) < call, f"{guard} is checked after the agent runs"

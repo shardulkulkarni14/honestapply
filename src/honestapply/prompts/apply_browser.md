@@ -326,17 +326,29 @@ If the option element cannot be clicked by ref (e.g. the ref is not focusable):
     - Disability status → `demographics.disability_status`
     All default to "prefer_not_to_say" / "I don't wish to answer" / "Decline to identify".
 
-### Step 9 — CAPTCHA check
+### Step 9 — CAPTCHA check (notify a human, wait, then resume)
 
 12. If a CAPTCHA is detected at any point:
     a. Take a full-page screenshot and save to `{pre_submit_screenshot_path}`.
-    b. Output:
+    b. **Emit a single NOTIFY line** so honestapply can alert the human (who will
+       then solve it in the open browser). Print exactly one line:
+       ```
+       <<<NOTIFY>>>{"type": "captcha", "reason": "CAPTCHA on this application — please solve it in the browser; I'll continue once it clears."}<<<END>>>
+       ```
+       (This is NOT the final result — keep going.)
+    c. **Wait for the human to solve it in the live browser.** Poll the page:
+       use `browser_wait_for` / re-`browser_snapshot` every ~10 seconds, watching
+       for the CAPTCHA/challenge element to disappear or the page to advance.
+       Keep waiting up to ~3 minutes total. Do **not** attempt to solve the
+       CAPTCHA yourself, and never click through an invisible-score block.
+    d. If the challenge clears → **continue** the application from where you were.
+    e. If it is still present after ~3 minutes (or it's an invisible hard-block
+       with nothing to solve), emit the final result and stop:
        ```
        <<<RESULT>>>
-       {"status": "needs_human", "reason": "CAPTCHA detected — manual intervention required.", "confirmation_text": "", "pre_submit_screenshot": "{pre_submit_screenshot_path}", "post_submit_screenshot": ""}
+       {"status": "needs_human", "reason": "CAPTCHA not solved in time (or invisible hard-block).", "confirmation_text": "", "pre_submit_screenshot": "{pre_submit_screenshot_path}", "post_submit_screenshot": ""}
        <<<END>>>
        ```
-    Then stop.
 
 ### Step 10 — Pre-submit screenshot (ALWAYS)
 
