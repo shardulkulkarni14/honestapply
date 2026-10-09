@@ -83,6 +83,21 @@ class Settings(BaseSettings):
     # account (email + a vault-managed password it never sees) and verifies via
     # Gmail, behind the same dry-run/cap guards. See docs/ACCOUNTS.md.
     honestapply_enable_account_signup: bool = False
+
+    # --- Needs-human notifications (local, opt-in) ----------------------------
+    # Ping your phone when the apply agent hits a CAPTCHA / login wall / a field it
+    # can't answer, so you can solve it in the open browser and the SAME run
+    # resumes (no restart). Fully local & OSS — no third-party browser. Telegram by
+    # default; ntfy also supported. Unset = disabled (falls back to needs_human).
+    honestapply_notify_provider: Literal["telegram", "ntfy", "none"] = "none"
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+    ntfy_url: str = "https://ntfy.sh"
+    ntfy_topic: str | None = None
+    # How long the agent waits for you to solve a CAPTCHA (in the live browser)
+    # before falling back to needs_human.
+    honestapply_captcha_wait_seconds: int = 240
+
     honestapply_inbox_lookback_days: int = 30
     # Hard wall-clock limit for one inbox triage-agent run. Wide windows / large
     # inboxes can be slow; raise this if a sweep times out (default 15 min).

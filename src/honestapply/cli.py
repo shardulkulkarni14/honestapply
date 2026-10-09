@@ -210,6 +210,19 @@ def doctor() -> None:
     else:
         row("Account signup", None, "disabled (default) — see docs/ACCOUNTS.md")
 
+    # Needs-human notifications (ping you on CAPTCHA/login so you can solve locally)
+    try:
+        from honestapply import notify as _notify
+
+        nprov = settings.honestapply_notify_provider
+        if nprov and nprov != "none":
+            ok = _notify.is_configured(settings)
+            row("Notifications", ok, f"{nprov}" + ("" if ok else " · not fully configured"))
+        else:
+            row("Notifications", None, "off — set TELEGRAM_* or NTFY_TOPIC (docs/NOTIFICATIONS.md)")
+    except Exception as exc:  # pragma: no cover
+        row("Notifications", False, str(exc))
+
     console.print(table)
 
 
