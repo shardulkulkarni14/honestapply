@@ -260,16 +260,17 @@
     <input id="q" placeholder="Search company, role…" autocomplete="off" oninput="onSearch()">
     <div class="filters" id="filters"></div>
     <span class="spacer2"></span>
+    <button id="archToggle" class="chip" onclick="toggleArchived()" title="Show archived (soft-deleted) jobs">Show archived</button>
     <span class="count" id="count"></span>
   </div>
   <div class="tablewrap">
     <table>
-      <colgroup><col><col><col class="c-loc"><col><col class="num"><col><col class="c-notes"><col class="c-files"></colgroup>
+      <colgroup><col><col><col class="c-loc"><col><col class="num"><col><col class="c-notes"><col class="c-files"><col class="c-act"></colgroup>
       <thead><tr>
         <th>Company</th><th>Role</th><th class="c-loc">Location</th><th>Status</th>
-        <th class="num">Fit</th><th>Applied</th><th class="c-notes">Notes</th><th class="c-files">Files</th>
+        <th class="num">Fit</th><th>Applied</th><th class="c-notes">Notes</th><th class="c-files">Files</th><th class="c-act" aria-label="Actions"></th>
       </tr></thead>
-      <tbody id="rows"><tr><td colspan="8" class="empty">loading…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="9" class="empty">loading…</td></tr></tbody>
     </table>
   </div>
   <div class="pager" id="pager"></div>
@@ -481,7 +482,7 @@ function renderTable(force){
   document.getElementById('count').textContent = `${matched.length} result${matched.length===1?'':'s'}`;
   renderPager(matched.length, pages);
   const tb=document.getElementById('rows');
-  if(!rows.length){ tb.innerHTML='<tr><td colspan="8" class="empty">No matching applications.</td></tr>'; return; }
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="9" class="empty">No matching applications.</td></tr>'; return; }
   tb.innerHTML = rows.map(r=>{
     let extra='';
     if(r.next_interview){ const past=r.next_interview_iso && new Date(r.next_interview_iso)<new Date();
@@ -499,8 +500,33 @@ function renderTable(force){
       <td class="c-notes" data-l="Notes"><textarea class="noteinput" rows="1" placeholder="add a note…" aria-label="Note for ${esc(r.company)}"
         oninput="noteTyping(${r.job_id}, this.value)" onchange="saveNote(${r.job_id}, this.value)">${esc(r.notes)}</textarea></td>
       <td class="c-files" data-l="Files">${fileLinks(r)}</td>
+      <td class="c-act" data-l="">${archiveBtn(r)}</td>
     </tr>`;
   }).join('');
+}
+function archiveBtn(r){
+  const s='background:none;border:none;cursor:pointer;color:var(--muted)';
+  return r.archived
+    ? `<button title="Restore to the list" onclick="setArchived(${r.job_id}, false)" style="${s};font-size:12px;white-space:nowrap">↩ Restore</button>`
+    : `<button title="Archive — hide from the list" aria-label="Archive ${esc(r.company)}" onclick="setArchived(${r.job_id}, true)" style="${s};font-size:15px">🗑</button>`;
+}
+async function setArchived(job_id, archived){
+  try{
+    const r=await fetch('/api/jobs/'+job_id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({archived})});
+    if(!r.ok){ const d=await r.json().catch(()=>({})); toast(d.detail||'Could not update'); return; }
+    _lastData='';  // force refresh
+    toast(archived?'Job archived':'Job restored', archived?{label:'Undo', fn:()=>setArchived(job_id, false)}:null);
+    refreshAll();
+  }catch(e){ toast('Could not update — is honestapply running?'); }
+}
+let showArchived=false;
+function toggleArchived(){
+  showArchived=!showArchived;
+  const b=document.getElementById('archToggle');
+  b.classList.toggle('active', showArchived);
+  b.textContent = showArchived?'Hide archived':'Show archived';
+  _lastData=''; page=0;
+  loadTable();
 }
 let _noteTimers={};
 function noteTyping(id, val){ clearTimeout(_noteTimers[id]); _noteTimers[id]=setTimeout(()=>saveNote(id, val, true), 600); }
@@ -514,7 +540,7 @@ async function saveNote(job_id, notes, silent){
 let _lastData='';
 async function loadTable(){
   let next;
-  try{ const r=await fetch('/api/applications'); if(!r.ok) throw 0; next=await r.text(); }
+  try{ const r=await fetch('/api/applications'+(showArchived?'?include_archived=1':'')); if(!r.ok) throw 0; next=await r.text(); }
   catch(e){ setOnline(false); return; }
   if(next===_lastData) return;   // unchanged → don't rebuild the DOM (preserves edits)
   _lastData=next; DATA=JSON.parse(next);
