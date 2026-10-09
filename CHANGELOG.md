@@ -5,6 +5,31 @@ All notable changes to honestapply are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0: minor
 versions may still change behaviour).
 
+## [Unreleased]
+
+Merged to `main`, not yet released — the next release (0.3.0) will ship these
+together with the deterministic ATS apply fast-path.
+
+### Added
+- **Needs-human notifications.** When a job is routed to `needs_human` during
+  apply, send a phone notification (Telegram or ntfy) so you can step in. Opt-in
+  via `HONESTAPPLY_NOTIFY_PROVIDER`; notify-only (no CAPTCHA auto-solving).
+- **Optional Chromium PDF renderer** behind `RESUME_RENDERER=chromium`, so users
+  can avoid the system Pango dependency. WeasyPrint stays the default; `playwright`
+  is an opt-in extra.
+- **Archive (soft-delete) jobs from the dashboard** — a per-row archive button
+  with undo, a "Show archived" toggle, and restore. Backed by a nullable
+  `jobs.archived_at`; history is never touched.
+- **CLA Assistant** so first-time contributors sign the CLA on their first PR.
+- **Professional README header** with an SVG wordmark and true status badges.
+
+### Changed
+- The dashboard funnel and outcome counts exclude archived jobs.
+
+### Removed
+- The dead Next.js dashboard frontend (`dashboard/web/`); the dashboard is a
+  single self-contained page.
+
 ## [0.2.0] — 2026-10-08
 
 Inbox awareness, hands-off account creation with secrets you can't read, and a
@@ -51,5 +76,6 @@ under a hard ceiling, CAPTCHAs routed to a human), the provenance attestation,
 and the review dashboard. Shipped with NOTICE, CONTRIBUTING, Code of Conduct,
 issue/PR templates, and a privacy-first gitignore.
 
+[Unreleased]: https://github.com/shardulkulkarni14/honestapply/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/shardulkulkarni14/honestapply/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/shardulkulkarni14/honestapply/releases/tag/v0.1.0
