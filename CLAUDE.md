@@ -43,7 +43,9 @@ pipeline with no API key (shells out to the user's Claude Code login).
 - `src/honestapply/llm/` — provider abstraction (`claude_cli`, `anthropic`, `gemini`,
   `openai`, `stub`); prompts live in `src/honestapply/prompts/*.md`
 - `src/honestapply/resume/` — YAML schema (`schema.py`), Jinja→WeasyPrint PDF renderer.
-  Keep dates inline (not floated) in templates: floats scramble ATS text-extraction order
+  Keep dates inline (not floated) in templates: floats scramble ATS text-extraction order.
+  `RESUME_RENDERER=chromium` is an opt-in alternative (`chromium.py`) that renders the same
+  HTML via headless Chrome to avoid the Pango system dep; WeasyPrint stays the default
 - `src/honestapply/ats/` — per-ATS detection + form metadata (Greenhouse/Lever/Ashby/…)
 - `scripts/` — reporting: `build_tracker.py` (markdown board from the DB),
   `fetch_job_descriptions.py` (archive JDs before postings vanish)
