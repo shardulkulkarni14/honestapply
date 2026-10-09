@@ -130,6 +130,10 @@ class Job(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow
     )
+    # Soft delete: when set, the job is hidden from the dashboard's active views
+    # (table, funnel) but never physically removed, so an archive is always
+    # reversible and the audit history (events) stays intact. NULL = active.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, default=None, index=True)
 
     applications: Mapped[list["Application"]] = relationship(
         back_populates="job", cascade="all, delete-orphan"

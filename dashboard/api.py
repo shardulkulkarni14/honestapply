@@ -185,8 +185,11 @@ def _next_interview(*texts: str) -> tuple[str, str]:
 
 
 @app.get("/api/applications")
-def applications() -> list[dict]:
-    """One row per application — everything the table needs, links included."""
+def applications(include_archived: bool = False) -> list[dict]:
+    """One row per application — everything the table needs, links included.
+
+    Archived (soft-deleted) jobs are hidden unless ``include_archived`` is set,
+    so the dashboard's "Show archived" toggle can review and restore them."""
     entries = _answer_entries_cached()
     jd_ids = _jd_job_ids()
 
@@ -204,18 +207,16 @@ def applications() -> list[dict]:
             "applied", "needs_human", "failed",
             "screening", "interviewing", "offer", "rejected", "ghosted",
         }
-        jobs = (
-            s.execute(
-                select(Job)
-                .outerjoin(Application, Application.job_id == Job.id)
-                .where(or_(Application.id.isnot(None), Job.status.in_(tracked)))
-                .options(joinedload(Job.applications))
-                .distinct()
-            )
-            .unique()
-            .scalars()
-            .all()
+        q = (
+            select(Job)
+            .outerjoin(Application, Application.job_id == Job.id)
+            .where(or_(Application.id.isnot(None), Job.status.in_(tracked)))
+            .options(joinedload(Job.applications))
+            .distinct()
         )
+        if not include_archived:
+            q = q.where(Job.archived_at.is_(None))
+        jobs = s.execute(q).unique().scalars().all()
         for j in jobs:
             apps = sorted(j.applications, key=lambda a: a.applied_at or 0, reverse=True)
             latest = apps[0] if apps else None
@@ -233,6 +234,7 @@ def applications() -> list[dict]:
                     "title": j.title or "",
                     "location": (j.location or "").split("|")[0].strip(),
                     "status": status or "",
+                    "archived": j.archived_at is not None,
                     "score": j.score,
                     "applied_at": latest.applied_at.strftime("%Y-%m-%d") if latest and latest.applied_at else "",
                     "url": j.url or "",
@@ -301,16 +303,29 @@ def funnel() -> dict:
     """The pipeline as a cumulative funnel (ever-reached, from job_events) plus
     current-state outcome buckets, for the dashboard face."""
     with session_scope() as s:
-        total = s.query(func.count(Job.id)).scalar() or 0
-        by_status = dict(s.query(Job.status, func.count(Job.id)).group_by(Job.status).all())
+        # Archived (soft-deleted) jobs are out of the pipeline entirely — they must
+        # not inflate any funnel or outcome count.
+        active = Job.archived_at.is_(None)
+        total = s.query(func.count(Job.id)).filter(active).scalar() or 0
+        by_status = dict(
+            s.query(Job.status, func.count(Job.id)).filter(active).group_by(Job.status).all()
+        )
 
         # A job counts toward a stage if its CURRENT status implies it (this covers
         # every job, including the ~⅔ that have no event rows) OR any event shows it
         # reached there (adds the real path for jobs that have since moved on — e.g.
         # a now-rejected job that passed through screening still counts "In process").
         def reached(statuses: set[str]) -> int:
-            cur = set(s.execute(select(Job.id).where(Job.status.in_(statuses))).scalars())
-            evt = set(s.execute(select(JobEvent.job_id).where(JobEvent.to_status.in_(statuses))).scalars())
+            cur = set(
+                s.execute(select(Job.id).where(Job.status.in_(statuses), active)).scalars()
+            )
+            evt = set(
+                s.execute(
+                    select(JobEvent.job_id)
+                    .join(Job, Job.id == JobEvent.job_id)
+                    .where(JobEvent.to_status.in_(statuses), active)
+                ).scalars()
+            )
             return len(cur | evt)
 
         stages = [{"key": k, "label": lbl, "count": reached(sts)} for k, lbl, sts in _FUNNEL_STAGES]
@@ -464,6 +479,7 @@ class JobPatch(BaseModel):
     status: str | None = None
     notes: str | None = None  # running note on the job (jobs.notes)
     event_note: str | None = None  # note attached to *this* status transition
+    archived: bool | None = None  # soft delete: True hides the job, False restores it
 
 
 # Statuses a human may set by hand from the dashboard — outcomes only. Setting a
@@ -496,7 +512,14 @@ def patch_job(job_id: int, patch: JobPatch) -> dict:
                 job.status = patch.status
             if patch.notes is not None:
                 job.notes = patch.notes
-            result = {"job_id": job.id, "status": job.status, "notes": job.notes or ""}
+            if patch.archived is not None:
+                job.archived_at = datetime.now(timezone.utc) if patch.archived else None
+            result = {
+                "job_id": job.id,
+                "status": job.status,
+                "notes": job.notes or "",
+                "archived": job.archived_at is not None,
+            }
     return result
 
 
