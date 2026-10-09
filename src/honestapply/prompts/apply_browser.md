@@ -174,6 +174,22 @@ fields, and never into a field whose label isn't a password/confirm-password.
    Fall back to generic field matching (labels, placeholders, `getByLabel`,
    `getByRole`) if a selector doesn't match.
 
+### Step 3.5 — Fast-path fill plan (execute, don't reason)
+
+The entries below are **precomputed from the applicant's own profile** and have
+already been verified as truthful and non-placeholder. For each: locate the field
+by its selector (fall back to label/role matching if the selector misses), fill
+the given value, verify it took, and move on — **do not reason about these values**.
+
+This does NOT relax Rule 0. If the live page contradicts a planned value, or a
+planned field isn't present, skip it — never invent. Fields **not** listed here
+are handled exactly as Steps 4–8 describe (including the `needs_human` fallback
+in §7d). If the plan says "No fast-path fields", fill everything per Steps 4–8.
+
+```
+{fill_plan}
+```
+
 ### Step 4 — Fill standard fields
 
 Fill each field you find using the profile data below. Skip fields that are
