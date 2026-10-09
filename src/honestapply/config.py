@@ -29,6 +29,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 HARD_DAILY_CEILING = 50
 
 ProviderName = Literal["claude_cli", "anthropic", "gemini", "openai", "stub"]
+ResumeRendererName = Literal["weasyprint", "chromium"]
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,14 @@ class Settings(BaseSettings):
     # Ollama (http://localhost:11434/v1), LM Studio, vLLM, llama.cpp, OpenRouter,
     # Groq, Together, DeepSeek. Local servers need no key.
     openai_base_url: str | None = None
+
+    # Résumé / cover-letter PDF renderer. "weasyprint" (DEFAULT) is the pure-Python
+    # path; it needs the system Pango/cairo stack. "chromium" renders the SAME Jinja
+    # HTML via headless Chrome "print to PDF" — use it to avoid the Pango system
+    # dependency. The chromium path uses playwright's bundled Chromium when the
+    # optional `[chromium]` extra is installed, else a detected Chrome/Chromium
+    # binary. Env var: RESUME_RENDERER.
+    resume_renderer: ResumeRendererName = "weasyprint"
 
     # Paths
     honestapply_db_path: str = "data/honestapply.db"

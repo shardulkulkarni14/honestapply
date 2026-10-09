@@ -127,6 +127,44 @@ def render_resume_html(
     return _env().get_template(template).render(**ctx)
 
 
+def _resolve_renderer(renderer: str | None) -> str:
+    """The chosen renderer: explicit arg, else the RESUME_RENDERER setting
+    (default 'weasyprint')."""
+    if renderer:
+        return renderer
+    from honestapply.config import get_settings
+
+    return get_settings().resume_renderer
+
+
+def _html_to_pdf(
+    html: str,
+    output_path: Path,
+    *,
+    base_url: str | None,
+    renderer: str | None = None,
+) -> Path:
+    """Render assembled HTML to a PDF with the selected backend.
+
+    'weasyprint' (DEFAULT) is unchanged. 'chromium' renders the SAME HTML via
+    headless Chrome — same `base_url` contract — to avoid the Pango dependency.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if _resolve_renderer(renderer) == "chromium":
+        from honestapply.resume.chromium import render_html_to_pdf
+
+        # Chrome runs in its own process, but serialise with the WeasyPrint lock
+        # so the two paths never contend when workers mix renderers.
+        with _PDF_LOCK:
+            return render_html_to_pdf(html, output_path, base_url=base_url)
+
+    import weasyprint  # local import so the DYLD fix in __init__ has run
+
+    with _PDF_LOCK:
+        weasyprint.HTML(string=html, base_url=base_url).write_pdf(str(output_path))
+    return output_path
+
+
 def render_resume_pdf(
     resume: Resume,
     output_path: str | Path,
@@ -135,18 +173,15 @@ def render_resume_pdf(
     experience_order: list[int] | None = None,
     template: str = DEFAULT_TEMPLATE,
     accent: str = DEFAULT_ACCENT,
+    renderer: str | None = None,
 ) -> Path:
-    import weasyprint  # local import so the DYLD fix in __init__ has run
-
     html = render_resume_html(
         resume, summary=summary, experience_order=experience_order,
         template=template, accent=accent,
     )
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with _PDF_LOCK:
-        weasyprint.HTML(string=html, base_url=str(TEMPLATES_DIR)).write_pdf(str(output_path))
-    return output_path
+    return _html_to_pdf(
+        html, Path(output_path), base_url=str(TEMPLATES_DIR), renderer=renderer
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -172,10 +207,9 @@ def render_cover_letter_pdf(
     *,
     company: str = "",
     role: str = "",
+    renderer: str | None = None,
 ) -> Path:
     import html as _html
-
-    import weasyprint
 
     paras = "".join(
         f"<p>{_html.escape(p.strip())}</p>" for p in body.split("\n\n") if p.strip()
@@ -194,8 +228,5 @@ def render_cover_letter_pdf(
 {paras}
 </body></html>"""
 
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with _PDF_LOCK:
-        weasyprint.HTML(string=doc).write_pdf(str(output_path))
-    return output_path
+    # The cover letter inlines all CSS, so no base_url is needed by either backend.
+    return _html_to_pdf(doc, Path(output_path), base_url=None, renderer=renderer)

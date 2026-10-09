@@ -34,6 +34,14 @@ resume = [
     "weasyprint>=61.0",
     "pypdf>=4.0",  # docs-bundle merges transcripts/references into one upload
 ]
+# Optional résumé renderer — headless Chromium instead of WeasyPrint, for users
+# who want to avoid the system Pango/cairo dependency. Set RESUME_RENDERER=chromium.
+# playwright ships its own Chromium (run `playwright install chromium` once after
+# installing this extra); without it the renderer falls back to any Chrome/Chromium
+# binary already on the machine, so this extra is NOT required for the chromium path.
+chromium = [
+    "playwright>=1.40",
+]
 # Stages 1 & 2 (discover/enrich) — job boards + HTML parsing
 discover = [
     "python-jobspy>=1.1.70",
