@@ -178,41 +178,14 @@ def _mock_result(dry_run: bool, job_dir: Path) -> dict:
     }
 
 
-def _run_claude(
-    instructions_text: str,
-    *,
-    mcp_config: str | None = None,
-    extra_env: dict[str, str] | None = None,
-) -> dict:
-    """Invoke the claude CLI and parse the <<<RESULT>>> block from stdout.
+# The agent prints this one-liner when it hits a CAPTCHA / needs a human, BEFORE
+# waiting in-session: honestapply sees it live and pings the human (with the
+# live-view URL) so they can solve it remotely and let the same run continue.
+_NOTIFY_RE = re.compile(r"<<<NOTIFY>>>\s*(\{.*?\})\s*<<<END>>>", re.DOTALL)
 
-    *mcp_config*, when given, is passed as ``--mcp-config <path> --strict-mcp-config``
-    so the agent uses exactly that server set (used by account-signup to route the
-    browser through the secret-injection proxy). *extra_env* is merged into the
-    subprocess environment (e.g. the account site/email for the proxy)."""
-    # Model for the browser-apply agent. Defaults to Opus 5; override with
-    # HONESTAPPLY_APPLY_MODEL if needed.
-    apply_model = os.environ.get("HONESTAPPLY_APPLY_MODEL", "claude-opus-5")
-    cmd = ["claude", "--dangerously-skip-permissions", "--model", apply_model]
-    if mcp_config:
-        cmd += ["--mcp-config", mcp_config, "--strict-mcp-config"]
-    cmd += ["-p", instructions_text]
-    env = {**os.environ, **extra_env} if extra_env else None
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,
-            env=env,
-        )
-        stdout = proc.stdout or ""
-    except subprocess.TimeoutExpired:
-        return {"status": "failed", "reason": "claude subprocess timed out (600s)", "confirmation_text": "", "pre_submit_screenshot": "", "post_submit_screenshot": ""}
-    except Exception as exc:
-        return {"status": "failed", "reason": f"claude subprocess error: {exc}", "confirmation_text": "", "pre_submit_screenshot": "", "post_submit_screenshot": ""}
 
-    # Parse the LAST <<<RESULT>>>...<<<END>>> block
+def _parse_claude_result(stdout: str) -> dict:
+    """Parse the LAST <<<RESULT>>> block from the agent's stdout."""
     matches = _RESULT_RE.findall(stdout)
     if not matches:
         tail = stdout[-2000:] if len(stdout) > 2000 else stdout
@@ -223,28 +196,105 @@ def _run_claude(
         return {"status": "failed", "reason": f"JSON parse error in result block: {exc}", "confirmation_text": "", "pre_submit_screenshot": "", "post_submit_screenshot": "", "_error_log": matches[-1]}
 
 
-def _write_signup_mcp_config(job_id: int | str) -> str:
-    """Write a per-run MCP config that routes the `playwright` server through the
-    secret-injection proxy (so the agent can fill an account password it never
-    sees), keeping every other server (e.g. `gmail` for email verification).
-    Returns the path to pass as --mcp-config."""
+def _run_claude(
+    instructions_text: str,
+    *,
+    mcp_config: str | None = None,
+    extra_env: dict[str, str] | None = None,
+    notify_cb=None,
+    timeout: int = 600,
+) -> dict:
+    """Invoke the claude CLI and parse the <<<RESULT>>> block from stdout.
+
+    *mcp_config* is passed as ``--mcp-config <path> --strict-mcp-config`` so the
+    agent uses exactly that server set (account-signup proxy and/or a hosted-browser
+    CDP endpoint). *extra_env* is merged into the subprocess env. When *notify_cb*
+    is given, stdout is streamed and ``notify_cb(payload)`` is called for each
+    ``<<<NOTIFY>>>{…}<<<END>>>`` line the agent emits (so we can ping the human
+    mid-run); otherwise the call is a simple capture."""
+    apply_model = os.environ.get("HONESTAPPLY_APPLY_MODEL", "claude-opus-5")
+    cmd = ["claude", "--dangerously-skip-permissions", "--model", apply_model]
+    if mcp_config:
+        cmd += ["--mcp-config", mcp_config, "--strict-mcp-config"]
+    cmd += ["-p", instructions_text]
+    env = {**os.environ, **extra_env} if extra_env else None
+
+    if notify_cb is None:
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        except subprocess.TimeoutExpired:
+            return {"status": "failed", "reason": f"claude subprocess timed out ({timeout}s)", "confirmation_text": "", "pre_submit_screenshot": "", "post_submit_screenshot": ""}
+        except Exception as exc:
+            return {"status": "failed", "reason": f"claude subprocess error: {exc}", "confirmation_text": "", "pre_submit_screenshot": "", "post_submit_screenshot": ""}
+        return _parse_claude_result(proc.stdout or "")
+
+    # Streaming path: watch for <<<NOTIFY>>> lines as they arrive.
+    import threading
+
+    lines: list[str] = []
+    seen: set[str] = set()
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=env, bufsize=1)
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "failed", "reason": f"claude subprocess error: {exc}", "confirmation_text": "", "pre_submit_screenshot": "", "post_submit_screenshot": ""}
+
+    def _reader() -> None:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            lines.append(line)
+            m = _NOTIFY_RE.search(line)
+            if m and m.group(1) not in seen:
+                seen.add(m.group(1))
+                try:
+                    notify_cb(json.loads(m.group(1)))
+                except Exception as exc:  # noqa: BLE001 — a bad ping must not abort
+                    log.warning("apply.notify_cb_failed", error=str(exc))
+
+    t = threading.Thread(target=_reader, daemon=True)
+    t.start()
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        t.join(timeout=5)
+        return {"status": "needs_human", "reason": f"Timed out after {timeout}s waiting (e.g. for a human to solve a CAPTCHA).", "confirmation_text": "", "pre_submit_screenshot": "", "post_submit_screenshot": "", "_error_log": "".join(lines)[-2000:]}
+    t.join(timeout=5)
+    return _parse_claude_result("".join(lines))
+
+
+def _build_apply_mcp_config(
+    job_id: int | str,
+    *,
+    via_proxy: bool = False,
+) -> str:
+    """Write a per-run MCP config derived from .mcp.json, optionally wrapping the
+    `playwright` server in the secret-injection proxy (*via_proxy*, for account
+    signup). Every other server (e.g. `gmail`) is preserved. Returns its path."""
     base = PATHS.root / ".mcp.json"
     cfg = json.loads(base.read_text(encoding="utf-8")) if base.exists() else {}
     servers = cfg.setdefault("mcpServers", {})
     pw = servers.get("playwright")
     if pw:
         inner = [pw.get("command", "npx"), *pw.get("args", [])]
-        servers["playwright"] = {
-            "type": "stdio",
-            # sys.executable, not bare "python", so the proxy resolves to the env
-            # honestapply runs in regardless of the agent subprocess PATH.
-            "command": sys.executable,
-            "args": ["-m", "honestapply.secret_proxy", *inner],
-            "env": pw.get("env", {}),
-        }
-    out = PATHS.job_output_dir(job_id) / "signup_mcp.json"
+        if via_proxy:
+            # sys.executable (not bare "python") so the proxy resolves to the env
+            # honestapply runs in, regardless of the agent subprocess PATH.
+            servers["playwright"] = {
+                "type": "stdio",
+                "command": sys.executable,
+                "args": ["-m", "honestapply.secret_proxy", *inner],
+                "env": pw.get("env", {}),
+            }
+        else:
+            servers["playwright"] = {"type": "stdio", "command": inner[0], "args": inner[1:], "env": pw.get("env", {})}
+    out = PATHS.job_output_dir(job_id) / "apply_mcp.json"
     out.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     return str(out)
+
+
+def _write_signup_mcp_config(job_id: int | str) -> str:
+    """Account-signup MCP config: playwright wrapped by the secret proxy."""
+    return _build_apply_mcp_config(job_id, via_proxy=True)
 
 
 def _signup_env(job_url: str) -> dict[str, str]:
@@ -257,6 +307,37 @@ def _signup_env(job_url: str) -> dict[str, str]:
         "HONESTAPPLY_ACCOUNT_SITE": normalize_site(job_url),
         "HONESTAPPLY_ACCOUNT_EMAIL": profile.email or "",
     }
+
+
+def _execute_agent(job: Job, job_url: str, instructions: str, signup_mode: bool, settings) -> dict:
+    """Run the apply agent for one job, with human-in-the-loop notifications (ping
+    you on a CAPTCHA / needs-human stop so you can solve it in the open browser and
+    the SAME run resumes) and the account-signup secret proxy. Fully local — no
+    third-party browser."""
+    from honestapply import notify as notify_mod
+
+    notify_enabled = notify_mod.is_configured(settings)
+    extra_env = _signup_env(job_url) if signup_mode else None
+    mcp_config = _write_signup_mcp_config(job.id) if signup_mode else None
+    run_timeout = 600
+    notify_cb = None
+
+    if notify_enabled:
+        company = job.company or ""
+        # Give you time to solve a CAPTCHA in the live browser before giving up.
+        run_timeout = max(600, getattr(settings, "honestapply_captcha_wait_seconds", 240) + 180)
+
+        def notify_cb(payload: dict) -> None:
+            reason = payload.get("reason") or payload.get("type") or "a step needs you"
+            notify_mod.notify(f"honestapply needs you · {company}".strip(" ·"), str(reason))
+
+    return _run_claude(
+        instructions,
+        mcp_config=mcp_config,
+        extra_env=extra_env,
+        notify_cb=notify_cb,
+        timeout=run_timeout,
+    )
 
 
 def _persist(
@@ -704,17 +785,8 @@ def _process_job(
 
     if _is_mock():
         result = _mock_result(effective_dry_run, job_dir)
-    elif signup_mode:
-        # Route the browser through the secret-injection proxy and tell the proxy
-        # which site's vault password to use. The agent fills `{{honestapply_password}}`;
-        # the proxy swaps in the real value and never lets the agent read it back.
-        result = _run_claude(
-            instructions_text,
-            mcp_config=_write_signup_mcp_config(job.id),
-            extra_env=_signup_env(job_url),
-        )
     else:
-        result = _run_claude(instructions_text)
+        result = _execute_agent(job, job_url, instructions_text, signup_mode, settings)
 
     # ── PERSIST ───────────────────────────────────────────────────────────────
     with session_scope() as s:
