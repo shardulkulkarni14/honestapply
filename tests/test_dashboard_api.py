@@ -172,6 +172,33 @@ def test_run_endpoints(client, monkeypatch):
     assert client.post("/api/run", json={"stage": "not-a-stage"}).status_code == 400
 
 
+def test_archive_hides_job_and_unarchive_restores(client, add_job):
+    """Archiving soft-deletes: the job leaves the default list but is recoverable."""
+    jid = add_job(status=Status.APPLIED)
+    assert any(r["job_id"] == jid for r in client.get("/api/applications").json())
+
+    resp = client.patch(f"/api/jobs/{jid}", json={"archived": True})
+    assert resp.status_code == 200 and resp.json()["archived"] is True
+
+    # gone from the default list, still present with include_archived
+    assert not any(r["job_id"] == jid for r in client.get("/api/applications").json())
+    shown = client.get("/api/applications?include_archived=1").json()
+    row = next(r for r in shown if r["job_id"] == jid)
+    assert row["archived"] is True
+
+    # unarchive restores it
+    assert client.patch(f"/api/jobs/{jid}", json={"archived": False}).json()["archived"] is False
+    assert any(r["job_id"] == jid for r in client.get("/api/applications").json())
+
+
+def test_archived_job_is_excluded_from_the_funnel(client, add_job):
+    jid = add_job(status=Status.APPLIED)
+    before = next(s for s in client.get("/api/funnel").json()["stages"] if s["key"] == "applied")["count"]
+    client.patch(f"/api/jobs/{jid}", json={"archived": True})
+    after = next(s for s in client.get("/api/funnel").json()["stages"] if s["key"] == "applied")["count"]
+    assert after == before - 1
+
+
 def test_requires_local_auth_token():
     from fastapi.testclient import TestClient
 
