@@ -72,7 +72,13 @@ def _job_outcomes(session: Session):
     for e in events:
         by_job[e.job_id].append(e)
 
-    jobs = {j.id: j for j in session.execute(select(Job)).scalars().all()}
+    # Archived (soft-deleted) jobs are out of the pipeline — exclude them so a
+    # deleted job never skews response/interview rates. Their events stay in the
+    # DB, but with no live Job here they yield nothing.
+    jobs = {
+        j.id: j
+        for j in session.execute(select(Job).where(Job.archived_at.is_(None))).scalars().all()
+    }
 
     for job_id, evs in by_job.items():
         reached = {e.to_status for e in evs}
@@ -115,7 +121,7 @@ def compute(session: Session) -> dict:
     """The full analytics payload."""
     # Funnel: current standing of every job, plus a derived no-response bucket.
     funnel: dict[str, int] = defaultdict(int)
-    for (status,) in session.execute(select(Job.status)):
+    for (status,) in session.execute(select(Job.status).where(Job.archived_at.is_(None))):
         funnel[status] += 1
 
     overall = Outcome()

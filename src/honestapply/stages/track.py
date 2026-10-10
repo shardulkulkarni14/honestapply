@@ -23,7 +23,9 @@ class StatusSummary:
 def status_counts() -> dict[str, int]:
     with session_scope() as s:
         rows = s.execute(
-            select(Job.status, func.count(Job.id)).group_by(Job.status)
+            select(Job.status, func.count(Job.id))
+            .where(Job.archived_at.is_(None))  # archived jobs are out of the pipeline
+            .group_by(Job.status)
         ).all()
     return {status: count for status, count in rows}
 
@@ -32,7 +34,9 @@ def summarize(limit: int = 10) -> StatusSummary:
     summary = StatusSummary()
     with session_scope() as s:
         rows = s.execute(
-            select(Job.status, func.count(Job.id)).group_by(Job.status)
+            select(Job.status, func.count(Job.id))
+            .where(Job.archived_at.is_(None))  # archived jobs are out of the pipeline
+            .group_by(Job.status)
         ).all()
         summary.counts = {status: count for status, count in rows}
         summary.total = sum(summary.counts.values())
