@@ -20,7 +20,6 @@ together with the deterministic ATS apply fast-path.
 - **Archive (soft-delete) jobs** from the dashboard (per-row button with undo +
   a "Show archived" toggle) or the CLI (`honestapply archive`/`unarchive <id>`).
   Backed by a nullable `jobs.archived_at`; history is never touched.
-- **CLA Assistant** so first-time contributors sign the CLA on their first PR.
 - **Professional README header** with an SVG wordmark and true status badges.
 
 ### Changed
