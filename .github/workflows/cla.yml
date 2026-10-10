@@ -55,4 +55,4 @@ jobs:
           custom-pr-sign-comment: I have read the CLA Document and I hereby sign the CLA
           custom-allsigned-prcomment: All contributors have signed the CLA. Thank you.
           # Bots and the maintainer don't need to sign.
-          allowlist: dependabot[bot],github-actions[bot]
+          allowlist: shardulkulkarni14,dependabot[bot],github-actions[bot]
