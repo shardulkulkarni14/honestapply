@@ -17,14 +17,14 @@ together with the deterministic ATS apply fast-path.
 - **Optional Chromium PDF renderer** behind `RESUME_RENDERER=chromium`, so users
   can avoid the system Pango dependency. WeasyPrint stays the default; `playwright`
   is an opt-in extra.
-- **Archive (soft-delete) jobs from the dashboard** — a per-row archive button
-  with undo, a "Show archived" toggle, and restore. Backed by a nullable
-  `jobs.archived_at`; history is never touched.
+- **Archive (soft-delete) jobs** from the dashboard (per-row button with undo +
+  a "Show archived" toggle) or the CLI (`honestapply archive`/`unarchive <id>`).
+  Backed by a nullable `jobs.archived_at`; history is never touched.
 - **CLA Assistant** so first-time contributors sign the CLA on their first PR.
 - **Professional README header** with an SVG wordmark and true status badges.
 
 ### Changed
-- The dashboard funnel and outcome counts exclude archived jobs.
+- The dashboard funnel, CLI status counts, and analytics all exclude archived jobs.
 
 ### Removed
 - The dead Next.js dashboard frontend (`dashboard/web/`); the dashboard is a
