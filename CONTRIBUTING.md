@@ -8,9 +8,8 @@ docs — are welcome.
 - **Sign the [CLA](CLA.md).** honestapply is dual-licensed (AGPL-3.0-or-later **and** a
   commercial edition), so contributors agree to a lightweight Contributor License
   Agreement: you keep ownership of your work, and the project keeps the right to include
-  it in the commercial edition. First-time contributors sign via the CLA Assistant bot on
-  their first PR — just comment *"I have read the CLA Document and I hereby sign the CLA"*
-  and the bot records it (one click, no account needed).
+  it in the commercial edition. By opening a pull request you confirm you agree to the CLA;
+  for a first contribution, please note your agreement in the PR description.
 - **Never commit personal data or secrets.** The repo is designed around this — `.gitignore`
   denies `data/`, `config/`, `.env`, résumés, DBs, PDFs, and form snapshots by default. Do
   not `git add -f` anything ignored, and keep real names, emails, résumés, and application
