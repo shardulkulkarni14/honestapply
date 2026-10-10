@@ -93,3 +93,24 @@ def test_apply_is_never_parallel():
     src = inspect.getsource(apply_stage)
     assert "ThreadPoolExecutor" not in src
     assert "stages.prepare" not in src and "_workers" not in src
+
+
+def test_fill_plan_never_contains_a_placeholder():
+    """The deterministic fast-path must never type a placeholder into a form:
+    a field is planned only when its value is present and non-placeholder."""
+    from honestapply.ats.fieldmap import build_field_plan
+    from honestapply.config import Profile
+
+    p = Profile(
+        legal_name={"first": "TODO_FILL", "last": "Kulkarni"},
+        email="s@example.com",
+        address={"city": "Munich", "postal_code": "TODO_FILL"},
+    )
+    selectors = {"first_name": "a", "last_name": "b", "email": "c", "city": "d", "postal_code": "e"}
+    plan = build_field_plan("greenhouse", p, {}, selectors)
+
+    for a in plan.actions:
+        assert not a.value.strip().upper().startswith("TODO")
+    keys = {a.field_key for a in plan.actions}
+    assert "first_name" not in keys and "postal_code" not in keys  # placeholders dropped
+    assert {"last_name", "email", "city"} <= keys  # real values kept
