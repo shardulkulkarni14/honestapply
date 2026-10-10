@@ -305,6 +305,46 @@ def mark(
                 console.print(f"[green]Job {job_id} → {new_status}[/green]")
 
 
+@app.command()
+def archive(job_id: int = typer.Argument(..., help="Job id to archive (soft delete).")) -> None:
+    """Soft-delete a job: hide it from the dashboard, status counts, and analytics.
+
+    Reversible with ``honestapply unarchive``. The job and its event history are
+    never removed — ``archived_at`` is just set, so nothing is lost.
+    """
+    from honestapply.db.models import Job, utcnow
+    from honestapply.db.session import session_scope
+
+    with session_scope() as s:
+        job = s.get(Job, job_id)
+        if not job:
+            console.print(f"[red]No job {job_id}.[/red]")
+            raise typer.Exit(1)
+        if job.archived_at is not None:
+            console.print(f"[yellow]Job {job_id} is already archived.[/yellow]")
+            return
+        job.archived_at = utcnow()
+    console.print(f"[green]Job {job_id} archived.[/green] Restore with: honestapply unarchive {job_id}")
+
+
+@app.command()
+def unarchive(job_id: int = typer.Argument(..., help="Job id to restore from archive.")) -> None:
+    """Restore a soft-deleted job to the active views."""
+    from honestapply.db.models import Job
+    from honestapply.db.session import session_scope
+
+    with session_scope() as s:
+        job = s.get(Job, job_id)
+        if not job:
+            console.print(f"[red]No job {job_id}.[/red]")
+            raise typer.Exit(1)
+        if job.archived_at is None:
+            console.print(f"[yellow]Job {job_id} is not archived.[/yellow]")
+            return
+        job.archived_at = None
+    console.print(f"[green]Job {job_id} restored.[/green]")
+
+
 # ---------------------------------------------------------------------------
 # Pipeline stages (lazy imports; each module exposes the named run_* function)
 # ---------------------------------------------------------------------------
