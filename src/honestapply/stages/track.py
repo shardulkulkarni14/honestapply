@@ -76,6 +76,33 @@ def summarize(limit: int = 10) -> StatusSummary:
     return summary
 
 
+def needs_human_jobs(limit: int | None = None) -> list[dict]:
+    """Jobs routed to ``needs_human`` (newest first), with the reason and URL.
+
+    These are forms the apply stage filled but could not submit on its own
+    (a question it cannot answer truthfully, a CAPTCHA, an account wall). The
+    list lets you finish them by hand. Archived jobs are excluded.
+    """
+    with session_scope() as s:
+        query = (
+            select(Job.id, Job.company, Job.title, Job.status_reason, Job.url, Job.updated_at)
+            .where(Job.status == Status.NEEDS_HUMAN, Job.archived_at.is_(None))
+            .order_by(Job.updated_at.desc().nullslast(), Job.id.desc())
+        )
+        if limit is not None:
+            query = query.limit(limit)
+        return [
+            {
+                "job_id": jid,
+                "company": company or "",
+                "title": title or "",
+                "reason": reason or "",
+                "url": url or "",
+            }
+            for jid, company, title, reason, url, _ in s.execute(query).all()
+        ]
+
+
 def company_total_submissions(session, company: str) -> int:
     """All-time count of DISTINCT roles really applied to at *company*.
 
