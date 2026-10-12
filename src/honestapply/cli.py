@@ -252,6 +252,35 @@ def status() -> None:
         console.print(rt)
 
 
+@app.command(name="needs-human")
+def needs_human(
+    limit: int = typer.Option(None, help="Show at most this many (newest first)."),
+) -> None:
+    """List jobs the apply stage could not finish on its own, with the reason.
+
+    These forms were filled but not submitted (a question that can't be answered
+    truthfully, a CAPTCHA, or an account wall). Open each URL to finish by hand.
+    """
+    from honestapply.stages.track import needs_human_jobs
+
+    rows = needs_human_jobs(limit=limit)
+    if not rows:
+        console.print("[green]Nothing waiting — no jobs in needs_human.[/green]")
+        return
+    table = Table(title=f"Needs human ({len(rows)})", show_lines=True)
+    table.add_column("ID", justify="right")
+    table.add_column("Company")
+    table.add_column("Role")
+    table.add_column("Why / URL")
+    for r in rows:
+        why = r["reason"] or "(no reason recorded)"
+        table.add_row(
+            str(r["job_id"]), r["company"], r["title"][:40],
+            f"{why[:90]}\n[cyan]{r['url']}[/cyan]",
+        )
+    console.print(table)
+
+
 @app.command()
 def mark(
     job_id: int = typer.Argument(...),
