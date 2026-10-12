@@ -228,6 +228,36 @@ def tailor_job(
     )
 
 
+def _retire_capped_employers(session, job_ids: list[int], total_cap: int) -> list[int]:
+    """Drop job ids whose employer is already at the lifetime cap, retiring them.
+
+    Retired jobs are set to ``SKIPPED_COMPANY_CAP`` in *session* (the caller
+    commits) so the tailor pool never builds resumes/cover letters for roles the
+    apply stage would skip anyway. Returns the ids that should still be tailored.
+    A non-positive *total_cap* disables the check and keeps every id.
+    """
+    if total_cap <= 0 or not job_ids:
+        return job_ids
+    from honestapply.stages.track import company_total_submissions
+
+    kept: list[int] = []
+    retired = 0
+    for jid in job_ids:
+        job = session.get(Job, jid)
+        if job and company_total_submissions(session, job.company or "") >= total_cap:
+            job.status = Status.SKIPPED_COMPANY_CAP
+            job.status_reason = (
+                f"Retired before tailor: employer already has {total_cap}+ "
+                "submitted applications (lifetime cap)."
+            )
+            retired += 1
+        else:
+            kept.append(jid)
+    if retired:
+        logger.info("tailor: retired %d SCORED job(s) at the lifetime company cap", retired)
+    return kept
+
+
 def run_tailor(limit: int | None = None, ids: list[int] | None = None,
                workers: int | None = None) -> int:
     """Tailor resumes for SCORED jobs. Returns count successfully tailored.
@@ -253,6 +283,13 @@ def run_tailor(limit: int | None = None, ids: list[int] | None = None,
         if limit is not None:
             query = query.limit(limit)
         job_ids = list(session.execute(query).scalars())
+
+        # Retire employers already at the per-company lifetime cap BEFORE spending
+        # tailor/cover-letter compute on them. The apply stage enforces the same
+        # cap at submit time (its backstop stays); doing it here just avoids
+        # building resumes and cover letters for roles that would be skipped.
+        total_cap = getattr(settings, "honestapply_per_company_total_cap", 0)
+        job_ids = _retire_capped_employers(session, job_ids, total_cap)
     logger.info("tailor: found %d SCORED jobs", len(job_ids))
 
     results = run_pool(

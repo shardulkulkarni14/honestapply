@@ -76,6 +76,30 @@ def summarize(limit: int = 10) -> StatusSummary:
     return summary
 
 
+def company_total_submissions(session, company: str) -> int:
+    """All-time count of DISTINCT roles really applied to at *company*.
+
+    Single source of truth for the per-employer lifetime cap. The apply stage
+    enforces the cap at submit time; earlier stages (e.g. tailor) use this same
+    counter to retire a capped employer's queued roles *before* spending compute
+    on them. Counts DISTINCT ``job_id`` because the apply stage can write more
+    than one Application row per job.
+    """
+    if not company:
+        return 0
+    return (
+        session.execute(
+            select(func.count(func.distinct(Application.job_id)))
+            .join(Job, Job.id == Application.job_id)
+            .where(
+                func.lower(func.trim(Job.company)) == company.strip().lower(),
+                Application.mode == "real",
+                Application.status == "applied",
+            )
+        ).scalar_one()
+    ) or 0
+
+
 def real_submissions_today() -> int:
     """Count of real submissions in the last 24h — feeds the daily cap check."""
     from datetime import datetime, timedelta, timezone
