@@ -24,6 +24,11 @@ together with the deterministic ATS apply fast-path.
 
 ### Changed
 - The dashboard funnel, CLI status counts, and analytics all exclude archived jobs.
+- The per-employer lifetime cap is now applied **before tailor**, not only at
+  apply: employers already at the cap have their queued roles retired up front,
+  so the pipeline no longer spends résumé/cover-letter compute on jobs the apply
+  stage would skip. The apply-time guard stays as the backstop, and both now
+  share one submission counter (`track.company_total_submissions`).
 
 ### Removed
 - The dead Next.js dashboard frontend (`dashboard/web/`); the dashboard is a

@@ -565,18 +565,9 @@ def _company_total_submissions(session, company: str) -> int:
     reached 4+ over Sep 5-8). This cumulative count backs a hard lifetime cap so
     the pipeline never keeps re-applying to one employer role after role.
     """
-    if not company:
-        return 0
-    return (
-        session.query(func.count(func.distinct(Application.job_id)))
-        .join(Job, Job.id == Application.job_id)
-        .filter(
-            func.lower(func.trim(Job.company)) == company.strip().lower(),
-            Application.mode == "real",
-            Application.status == "applied",
-        )
-        .scalar()
-    ) or 0
+    from honestapply.stages.track import company_total_submissions
+
+    return company_total_submissions(session, company)
 
 
 def _process_job(
