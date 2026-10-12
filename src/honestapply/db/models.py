@@ -47,6 +47,10 @@ class Status:
     # A company already at its lifetime per-employer cap: its remaining queued
     # roles are retired so the pipeline never re-applies to the same employer.
     SKIPPED_COMPANY_CAP = "skipped_company_cap"
+    # A role located in a country the profile establishes the user cannot work in
+    # (confident "not authorised", needs sponsorship). Retired before tailor when
+    # HONESTAPPLY_SKIP_UNAUTHORIZED_COUNTRIES is on, so no compute is spent on it.
+    SKIPPED_WORK_AUTH = "skipped_work_auth"
 
     # Post-apply lifecycle. These come *after* a real submission and are set by
     # the user (or an inbox sync), not the pipeline — which is why they used to
@@ -62,7 +66,7 @@ class Status:
     PIPELINE = [
         DISCOVERED, ENRICHED, SCORED, SKIPPED_LOW_FIT, TAILORED, COVERED,
         READY_TO_APPLY, APPLIED, DRY_RUN_COMPLETED, NEEDS_HUMAN, FAILED,
-        SKIPPED_COMPANY_CAP,
+        SKIPPED_COMPANY_CAP, SKIPPED_WORK_AUTH,
     ]
     # Outcomes a human (or inbox sync) records after applying.
     POST_APPLY = [SCREENING, INTERVIEWING, OFFER, REJECTED, GHOSTED]

@@ -138,6 +138,13 @@ class Settings(BaseSettings):
     # pipeline never keeps re-applying to one employer. Set to 0 to disable.
     honestapply_per_company_total_cap: int = 2
 
+    # Opt-in: before tailor, retire roles whose location is in a country the
+    # profile establishes the user cannot work in (a confident "not authorised",
+    # needs sponsorship — e.g. US/UK for an EU-only Blue Card holder). Off by
+    # default: unknown/remote/unsettled countries are never dropped, and many
+    # such roles sponsor, so skipping is left as a deliberate choice.
+    honestapply_skip_unauthorized_countries: bool = False
+
     # Application conventions (CV format, salary/date formatting, salutations,
     # work-auth phrasing, account-walled ATSes). Defaults to the German market —
     # the beachhead — and is overridable; "en" gives neutral international.
