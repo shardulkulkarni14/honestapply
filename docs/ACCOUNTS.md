@@ -61,6 +61,27 @@ honestapply apply               # real submissions (confirm first — these go o
 > needed to *reach* the application form. Dry-run still means the final **Submit**
 > is not clicked. CAPTCHAs still route to `needs_human`.
 
+## When a job still lands in `needs_human` with signup on
+
+Enabling account-signup removes the **account wall**, not every blocker. A job
+can still route to `needs_human` even with signup on, and that is usually the
+no-fabrication guard working, not a signup failure:
+
+- **Honest-answer screening questions.** Many guest-apply forms
+  (Greenhouse, SmartRecruiters) need no account at all, yet ask a required
+  question the profile cannot answer truthfully — a country-specific
+  work-authorization question, a field that does not apply (e.g. an India **PAN**
+  number), or an e-signature declaration. honestapply fills everything it can,
+  attaches the PDFs, and then stops rather than guess. The form is left staged;
+  finish it by hand (`honestapply needs-human` lists them with the reason).
+- **Geography mismatch.** A role in a country you are not authorised to work in
+  surfaces a work-auth question with no truthful "yes". Enable
+  `HONESTAPPLY_SKIP_UNAUTHORIZED_COUNTRIES` to retire those before tailor.
+- **CAPTCHA.** Always routed to `needs_human`; never auto-solved.
+
+In short: signup helps with *reaching* the form, not with questions whose honest
+answer the profile does not establish.
+
 ## Manage saved credentials
 
 Passwords are never shown — only site names/metadata:
