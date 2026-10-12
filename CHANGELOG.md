@@ -21,6 +21,11 @@ together with the deterministic ATS apply fast-path.
   a "Show archived" toggle) or the CLI (`honestapply archive`/`unarchive <id>`).
   Backed by a nullable `jobs.archived_at`; history is never touched.
 - **Professional README header** with an SVG wordmark and true status badges.
+- **Opt-in work-auth geo filter.** With `HONESTAPPLY_SKIP_UNAUTHORIZED_COUNTRIES`
+  on, roles located in a country the profile establishes you cannot work in (a
+  confident "not authorised", needs sponsorship) are retired before tailor, so
+  no résumé/cover-letter compute is spent on them. Conservative: unknown, remote,
+  or unsettled countries are always kept. Off by default.
 
 ### Changed
 - The dashboard funnel, CLI status counts, and analytics all exclude archived jobs.

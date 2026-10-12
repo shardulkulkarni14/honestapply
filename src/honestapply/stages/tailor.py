@@ -258,6 +258,35 @@ def _retire_capped_employers(session, job_ids: list[int], total_cap: int) -> lis
     return kept
 
 
+def _skip_unauthorized_geo(session, job_ids: list[int], work_auth: dict) -> list[int]:
+    """Drop job ids whose location is in a country the profile says the user
+    cannot work in (confident "not authorised"), retiring them before tailor.
+
+    Conservative by construction (see ``is_confident_unauthorized``): unknown,
+    remote, or unsettled countries are always kept. Returns the ids to tailor.
+    """
+    if not job_ids:
+        return job_ids
+    from honestapply.work_authorization import is_confident_unauthorized
+
+    kept: list[int] = []
+    retired = 0
+    for jid in job_ids:
+        job = session.get(Job, jid)
+        if job and is_confident_unauthorized(work_auth, job.location or ""):
+            job.status = Status.SKIPPED_WORK_AUTH
+            job.status_reason = (
+                f"Retired before tailor: role in {job.location!r} needs work "
+                "authorization / sponsorship the profile does not establish."
+            )
+            retired += 1
+        else:
+            kept.append(jid)
+    if retired:
+        logger.info("tailor: retired %d SCORED job(s) in unauthorized countries", retired)
+    return kept
+
+
 def run_tailor(limit: int | None = None, ids: list[int] | None = None,
                workers: int | None = None) -> int:
     """Tailor resumes for SCORED jobs. Returns count successfully tailored.
@@ -290,6 +319,12 @@ def run_tailor(limit: int | None = None, ids: list[int] | None = None,
         # building resumes and cover letters for roles that would be skipped.
         total_cap = getattr(settings, "honestapply_per_company_total_cap", 0)
         job_ids = _retire_capped_employers(session, job_ids, total_cap)
+
+        # Opt-in: retire roles in countries the profile can't work in before tailor.
+        if getattr(settings, "honestapply_skip_unauthorized_countries", False):
+            from honestapply.config import load_profile
+
+            job_ids = _skip_unauthorized_geo(session, job_ids, load_profile().work_authorization)
     logger.info("tailor: found %d SCORED jobs", len(job_ids))
 
     results = run_pool(

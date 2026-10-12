@@ -122,3 +122,37 @@ def answer(work_auth: dict, target_country: str) -> WorkAuthAnswer:
 
     # Unknown country: never assert authorisation we can't establish.
     return _unsure(country)
+
+
+def country_from_location(location: str) -> str:
+    """Best-effort country from a free-text job location.
+
+    Job locations are strings like ``"Bucharest, Romania"`` or
+    ``"Munich, Germany"``; the country is the last comma-separated segment.
+    Returns ``""`` for locations with no clear country (e.g. a bare
+    ``"Remote"``), which keeps the geo filter conservative — an unknown country
+    is never treated as unauthorised.
+    """
+    loc = (location or "").strip()
+    if not loc:
+        return ""
+    tail = loc.split(",")[-1].strip()
+    # A bare "Remote"/"Hybrid" tail names no country.
+    if tail.lower() in {"remote", "hybrid", "on-site", "onsite", ""}:
+        return ""
+    return tail
+
+
+def is_confident_unauthorized(work_auth: dict, location: str) -> bool:
+    """True only when the profile *establishes* the user cannot work in this role's
+    country (a confident "not authorised", needs sponsorship).
+
+    Deliberately asymmetric: an unknown country, a remote posting, or a country
+    the profile doesn't settle all return False, so the caller never drops a job
+    it isn't sure about. Only a confident ``authorized is False`` filters.
+    """
+    country = country_from_location(location)
+    if not country:
+        return False
+    a = answer(work_auth, country)
+    return a.confident and a.authorized is False
