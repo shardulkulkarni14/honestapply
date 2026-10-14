@@ -8,6 +8,9 @@ Sources:
     Job board names: indeed, linkedin, glassdoor, zip_recruiter, google
                      (note: the jobspy `google` board returns empty without an
                       API key — prefer `indeed` for keyword/company sweeps)
+    arbeitsagentur:  the Bundesagentur für Arbeit Jobbörse (Germany's largest
+                     public job database) via its official read API — no scraping.
+                     See stages/arbeitsagentur.py for the personal-use posture.
     ATS names:       greenhouse, lever, ashby, smartrecruiters, workday
 
 The `sources` filter (e.g. ["greenhouse"] or ["indeed", "glassdoor"]) restricts
@@ -31,6 +34,7 @@ from honestapply.config import load_employers, load_profile, load_searches
 from honestapply.db.models import Job, Status, url_hash, utcnow
 from honestapply.db.session import init_db, session_scope
 from honestapply.logging_setup import get_logger
+from honestapply.stages.arbeitsagentur import run_arbeitsagentur_search
 
 log = get_logger(__name__)
 
@@ -404,7 +408,10 @@ def run_discover(sources: list[str] | None = None, filter_location: bool = True)
     for entry in searches:
         if not _want(entry.board):
             continue
-        raw_jobs = _run_jobspy_search(entry)
+        if entry.board.lower() == "arbeitsagentur":
+            raw_jobs = run_arbeitsagentur_search(entry)
+        else:
+            raw_jobs = _run_jobspy_search(entry)
         batch_inserted = 0
         with session_scope() as session:
             for job_data in raw_jobs:
