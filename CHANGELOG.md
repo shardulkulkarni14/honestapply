@@ -11,6 +11,12 @@ Merged to `main`, not yet released — the next release (0.3.0) will ship these
 together with the deterministic ATS apply fast-path.
 
 ### Added
+- **Arbeitsagentur (Bundesagentur für Arbeit) discovery source.** A new
+  `board: arbeitsagentur` queries Germany's largest public job database through
+  its official read API (`pc/v6/jobs`) — no scraping, no anti-bot circumvention.
+  Results flow through the normal pipeline; `enrich` fetches each full posting.
+  Personal-use posture: listings stay in the local DB and are never
+  redistributed (the data is the agency's, limited to job-placement use).
 - **Needs-human notifications.** When a job is routed to `needs_human` during
   apply, send a phone notification (Telegram or ntfy) so you can step in. Opt-in
   via `HONESTAPPLY_NOTIFY_PROVIDER`; notify-only (no CAPTCHA auto-solving).

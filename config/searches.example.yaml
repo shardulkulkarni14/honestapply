@@ -4,9 +4,13 @@
 # Fields:
 #   query       : search keywords (required)
 #   location    : city / region string passed to the board
-#   board       : indeed | linkedin | glassdoor | zip_recruiter
+#   board       : indeed | linkedin | glassdoor | zip_recruiter | arbeitsagentur
 #                 (avoid `google` — jobspy's Google Jobs scraper returns empty
 #                  without an API key; use `indeed` for keyword/company sweeps)
+#                 `arbeitsagentur` queries the Bundesagentur für Arbeit Jobbörse
+#                 (Germany's largest public job database) via its official read
+#                 API — no scraping. Personal use only; never redistribute its
+#                 listings. See src/honestapply/stages/arbeitsagentur.py.
 #   max_results : cap on results per search (default 25)
 #   country     : country hint for Indeed (default "Germany")
 #   hours_old   : only jobs posted within this many hours (leave blank for no filter)
@@ -18,6 +22,21 @@
 # Indeed (country: Germany) is typically the most reliable for German job searches.
 
 searches:
+  # ── Bundesagentur für Arbeit (Germany's largest public job board) ───────────
+  # Official API, no scraping. `location` is a German city/PLZ; `country` is
+  # ignored for this board. Great coverage for the German market.
+  - query: "AI Engineer"
+    location: "München"
+    board: arbeitsagentur
+    max_results: 100
+    hours_old: 168   # posted within 1 week
+
+  - query: "Machine Learning Engineer"
+    location: "Berlin"
+    board: arbeitsagentur
+    max_results: 100
+    hours_old: 168
+
   # ── Munich / Bavaria ───────────────────────────────────────────────────────
   - query: "AI Engineer"
     location: "Munich, Germany"
