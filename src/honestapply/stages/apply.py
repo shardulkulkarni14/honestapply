@@ -140,6 +140,18 @@ def _build_instructions(
     answers_yaml_str = yaml.dump(answers, allow_unicode=True, default_flow_style=False)
     ats_selectors_str = yaml.dump(ats_selectors, allow_unicode=True, default_flow_style=False)
 
+    # Deterministic fast-path: precompute the truthful, placeholder-free fields we
+    # can fill without per-field LLM reasoning, and hand them to the agent as an
+    # explicit plan. Conservative on country (defer when unknown) so work-auth and
+    # India-phone are never guessed; everything unplanned falls back to Steps 4–8.
+    from honestapply.ats.fieldmap import build_field_plan, render_fill_plan
+
+    field_plan = build_field_plan(ats_type, profile, answers, ats_selectors, target_country="")
+    fill_plan_str = render_fill_plan(field_plan)
+    (job_dir / "fill_plan.json").write_text(
+        json.dumps(field_plan.as_dict(), indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
     substitutions = {
         "job_url": job_url,
         "ats_type": ats_type,
@@ -151,6 +163,7 @@ def _build_instructions(
         "profile_json": profile_json_str,
         "answers_yaml": answers_yaml_str,
         "ats_selectors": ats_selectors_str,
+        "fill_plan": fill_plan_str,
         "pre_submit_screenshot_path": str(pre_screenshot.resolve()),
         "post_submit_screenshot_path": str(post_screenshot.resolve()),
     }
