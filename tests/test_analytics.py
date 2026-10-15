@@ -9,7 +9,12 @@ import pytest
 from honestapply.analytics import compute
 from honestapply.db.models import Job, Status
 from honestapply.db.session import session_scope
-from honestapply.taxonomy import classify_role_family, classify_seniority, classify_work_model
+from honestapply.taxonomy import (
+    classify,
+    classify_role_family,
+    classify_seniority,
+    classify_work_model,
+)
 
 
 # --- taxonomy classifier ----------------------------------------------------
@@ -20,8 +25,12 @@ from honestapply.taxonomy import classify_role_family, classify_seniority, class
         ("Machine Learning Engineer, Computer Vision", "ml"),
         ("Data Scientist", "data"),
         ("Platform Engineer (Kubernetes)", "platform"),
+        ("Frontend Engineer (React)", "frontend"),
+        ("Backend Engineer, API", "backend"),
+        ("Full-Stack Developer", "fullstack"),
         ("Senior Software Engineer", "swe"),
         ("Head of Marketing", None),
+        ("", None),
     ],
 )
 def test_role_family_classification(title, expected):
@@ -42,11 +51,31 @@ def test_seniority_classification(title, expected):
     assert classify_seniority(title) == expected
 
 
+def test_seniority_rule_order():
+    # Order in _SENIORITY_RULES decides ties; these are the cases the comments call out.
+    assert classify_seniority("Senior Staff Engineer") == "staff"
+    assert classify_seniority("Senior Lead Engineer") == "lead"
+    assert classify_seniority("Principal Engineer") == "principal"
+    assert classify_seniority("Junior Developer") == "junior"
+    assert classify_seniority("Data Scientist") is None  # unmarked -> not guessed
+
+
 def test_work_model_prefers_hybrid_over_remote():
     assert classify_work_model("Berlin (hybrid remote)") == "hybrid"
     assert classify_work_model("Remote - EU") == "remote"
     assert classify_work_model("Munich, on-site") == "onsite"
     assert classify_work_model("Munich") is None
+
+
+def test_work_model_falls_back_to_description():
+    # The location names no model, so the JD body decides.
+    assert classify_work_model("Munich", "This is a fully remote role") == "remote"
+    assert classify_work_model("", None) is None
+
+
+def test_classify_returns_all_three_dimensions():
+    result = classify("Senior GenAI Engineer", "Berlin (hybrid)", "LLM work")
+    assert result == {"role_family": "genai", "seniority": "senior", "work_model": "hybrid"}
 
 
 # --- analytics --------------------------------------------------------------
