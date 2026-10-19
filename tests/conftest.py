@@ -14,13 +14,28 @@ os.environ.setdefault("HONESTAPPLY_APPLY_MOCK", "1")
 
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
-    """Bind the global engine to a brand-new SQLite file for each test."""
+    """Bind the global engine to a brand-new SQLite file for each test, and make
+    settings hermetic.
+
+    The suite must see the *shipped defaults* (safety guards, opt-in flags such as
+    ``HONESTAPPLY_ENABLE_ACCOUNT_SIGNUP``), not whatever the developer has in the
+    repo's gitignored ``.env`` or exported in their shell. Otherwise a personal
+    opt-in silently flips safety-routing tests (account-walled → needs_human).
+    """
+    from honestapply.config import Settings, get_settings
+
+    # 1. Don't read the repo's .env during tests.
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    # 2. Drop any HONESTAPPLY_* knobs inherited from the shell; tests that need
+    #    one set it explicitly (after this fixture, so their value wins).
+    for key in list(os.environ):
+        if key.startswith("HONESTAPPLY_"):
+            monkeypatch.delenv(key, raising=False)
+
     db = tmp_path / "test.db"
     monkeypatch.setenv("HONESTAPPLY_DB_PATH", str(db))
     monkeypatch.setenv("LLM_PROVIDER", "stub")
     monkeypatch.setenv("HONESTAPPLY_APPLY_MOCK", "1")
-
-    from honestapply.config import get_settings
 
     get_settings.cache_clear()
     from honestapply.db.session import init_db

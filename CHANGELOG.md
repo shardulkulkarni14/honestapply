@@ -14,6 +14,14 @@ versions may still change behaviour).
   `?t=` URL token over any `ha_token` cookie, so a stale cookie from an earlier
   run (cookies are shared across ports on localhost) can no longer shadow a valid
   token and 401 you out. Opening from the terminal URL always works.
+- **Test suite no longer inherits the developer's `.env` / shell overrides.**
+  Settings are now hermetic under pytest (the repo's `.env` is not read and
+  `HONESTAPPLY_*` shell variables are dropped), so the suite always exercises the
+  shipped defaults. Previously a personal opt-in such as
+  `HONESTAPPLY_ENABLE_ACCOUNT_SIGNUP=true` in `.env` silently flipped the
+  account-walled → `needs_human` safety-routing tests to failures. Runtime
+  behaviour is unchanged: account-walled jobs still route to `needs_human`
+  unless account signup is explicitly enabled.
 
 ## [0.3.0] — 2026-10-19
 
