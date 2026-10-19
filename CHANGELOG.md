@@ -7,10 +7,18 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
-Merged to `main`, not yet released — the next release (0.3.0) will ship these
-together with the deterministic ATS apply fast-path.
+## [0.3.0] — 2026-10-19
+
+The German market, end to end: the Bundesagentur für Arbeit Jobbörse as a
+first-class discovery source, and a deterministic ATS apply fast-path.
 
 ### Added
+- **Deterministic ATS fill-plan fast-path.** For known ATS forms, apply
+  precomputes the truthful, placeholder-free fields (name, email, phone, links,
+  location) from the profile and hands the agent an explicit plan to execute
+  rather than reason about field-by-field. Rule 0 still holds: anything the live
+  page contradicts or that isn't planned falls back to the normal steps
+  (including `needs_human`); nothing is invented.
 - **Arbeitsagentur (Bundesagentur für Arbeit) discovery source.** A new
   `board: arbeitsagentur` queries Germany's largest public job database through
   its official read API (`pc/v6/jobs`) — no scraping, no anti-bot circumvention.
@@ -91,6 +99,7 @@ under a hard ceiling, CAPTCHAs routed to a human), the provenance attestation,
 and the review dashboard. Shipped with NOTICE, CONTRIBUTING, Code of Conduct,
 issue/PR templates, and a privacy-first gitignore.
 
-[Unreleased]: https://github.com/shardulkulkarni14/honestapply/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/shardulkulkarni14/honestapply/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/shardulkulkarni14/honestapply/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/shardulkulkarni14/honestapply/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/shardulkulkarni14/honestapply/releases/tag/v0.1.0
