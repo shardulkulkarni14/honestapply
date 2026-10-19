@@ -7,6 +7,14 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-10-19
+
+### Fixed
+- **Dashboard stale-cookie lockout.** The local dashboard now prefers the fresh
+  `?t=` URL token over any `ha_token` cookie, so a stale cookie from an earlier
+  run (cookies are shared across ports on localhost) can no longer shadow a valid
+  token and 401 you out. Opening from the terminal URL always works.
+
 ## [0.3.0] — 2026-10-19
 
 The German market, end to end: the Bundesagentur für Arbeit Jobbörse as a
@@ -99,7 +107,8 @@ under a hard ceiling, CAPTCHAs routed to a human), the provenance attestation,
 and the review dashboard. Shipped with NOTICE, CONTRIBUTING, Code of Conduct,
 issue/PR templates, and a privacy-first gitignore.
 
-[Unreleased]: https://github.com/shardulkulkarni14/honestapply/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/shardulkulkarni14/honestapply/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/shardulkulkarni14/honestapply/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/shardulkulkarni14/honestapply/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/shardulkulkarni14/honestapply/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/shardulkulkarni14/honestapply/releases/tag/v0.1.0
