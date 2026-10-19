@@ -1,6 +1,6 @@
 """honestapply — autonomous job-application pipeline."""
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 
 def _ensure_native_lib_path() -> None:

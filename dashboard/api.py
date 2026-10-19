@@ -57,7 +57,10 @@ async def _local_auth(request: Request, call_next):
     host = (request.headers.get("host") or "").rsplit(":", 1)[0]
     if host not in _ALLOWED_HOSTS:  # anti DNS-rebinding
         return Response("Bad host", status_code=400)
-    tok = request.cookies.get("ha_token") or request.query_params.get("t") or ""
+    # Prefer the fresh URL token over any cookie: a stale ha_token cookie from an
+    # earlier run (cookies on localhost are shared across ports) must not shadow a
+    # valid ?t= in the URL and lock the user out.
+    tok = request.query_params.get("t") or request.cookies.get("ha_token") or ""
     if not secrets.compare_digest(tok, DASH_TOKEN):
         return Response(
             "Unauthorized — open the dashboard from the URL printed in your terminal "
