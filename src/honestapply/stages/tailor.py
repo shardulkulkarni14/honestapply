@@ -92,12 +92,83 @@ def _parse_yaml_from_llm(raw: str) -> dict:
     return yaml.safe_load(raw) or {}
 
 
+# A base résumé whose contact line declares a relocation ("Relocating to
+# Hyderabad, India", "Open to relocating to Abu Dhabi, UAE") is a
+# location-specific variant. Picking it by keyword overlap alone put an India
+# relocation header and the +91 number on a Munich application (2026-10-20).
+_RELOCATION_TARGET = re.compile(r"relocat\w*\s+to\s+([^(|·;)]+)", re.IGNORECASE)
+
+# Country names as they appear in résumé headers → the trailing ISO code some
+# boards use instead ("München, BY, DE", "Pune, MH, IN").
+_COUNTRY_ISO = {
+    "germany": "de",
+    "deutschland": "de",
+    "india": "in",
+    "uae": "ae",
+    "united arab emirates": "ae",
+    "usa": "us",
+    "united states": "us",
+    "united kingdom": "gb",
+    "uk": "gb",
+    "netherlands": "nl",
+    "switzerland": "ch",
+    "austria": "at",
+}
+
+
+def relocation_target(contact_location: str) -> str | None:
+    """The place a résumé header says the candidate is relocating to, or None."""
+    m = _RELOCATION_TARGET.search(contact_location or "")
+    if not m:
+        return None
+    return m.group(1).strip().strip(",. ") or None
+
+
+def resume_fits_job_location(resume: Resume, job_location: str) -> bool:
+    """False when *resume* is a relocation variant for somewhere the job is not.
+
+    A résumé with no relocation claim fits everywhere. One that claims a
+    relocation fits only when the job's location names the target city or
+    country (or its ISO code). An empty job location cannot justify a
+    relocation claim, so relocation variants are excluded for it.
+    """
+    target = relocation_target(resume.resume_facts.contact.location)
+    if not target:
+        return True
+    jl = (job_location or "").lower()
+    if not jl.strip():
+        return False
+    for token in (t.strip().lower() for t in re.split(r"[,/]", target)):
+        if not token:
+            continue
+        if token in jl:
+            return True
+        iso = _COUNTRY_ISO.get(token)
+        if iso and re.search(rf",\s*{iso}\b", jl):
+            return True
+    return False
+
+
 def _tailor_one(job: Job, provider, resumes: list[Resume]) -> None:
     jd_text = (job.title or "") + "\n\n" + (job.description or "")
 
     # --- pick best resume ---
+    # Location-specific variants (relocation headers) are only eligible for a
+    # job in that place; everything else is ranked by keyword overlap.
+    eligible = [r for r in resumes if resume_fits_job_location(r, job.location or "")]
+    skipped = len(resumes) - len(eligible)
+    if skipped:
+        logger.info(
+            "tailor: job %d — skipped %d relocation-specific résumé variant(s) for location %r",
+            job.id, skipped, job.location,
+        )
+    if not eligible:
+        job.status = Status.NEEDS_HUMAN
+        job.status_reason = "every base résumé is a relocation variant for a different location"
+        logger.warning("tailor: job %d — no location-neutral base résumé", job.id)
+        return
     scored = sorted(
-        resumes,
+        eligible,
         key=lambda r: keyword_match_score(r, jd_text),
         reverse=True,
     )
