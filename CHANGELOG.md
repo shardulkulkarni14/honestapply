@@ -7,6 +7,18 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-10-20
+
+### Fixed
+- **Tailor no longer picks a relocation-specific base résumé for a job
+  elsewhere.** Base résumés were ranked by keyword overlap alone, so a variant
+  whose header reads "Relocating to Hyderabad, India" (with the India phone
+  number) could win for a Munich posting — and did, on a live run. A variant
+  that declares a relocation is now eligible only when the job's location names
+  that city or country (ISO suffixes like `, IN` / `, DE` count); location-neutral
+  résumés fit everywhere. If every base résumé is a relocation variant for
+  somewhere else, the job routes to `needs_human` instead of guessing.
+
 ## [0.3.1] — 2026-10-19
 
 ### Fixed
