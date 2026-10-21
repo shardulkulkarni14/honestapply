@@ -7,6 +7,17 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-10-21
+
+### Fixed
+- **Cover-letter language guard no longer misreads a neighbouring language's
+  level.** "English (C1) and German (A2)" was flagged as a C1 claim for German,
+  because the guard only checked that a level and a language name sat within a
+  few characters of each other. A level is now attributed to the nearest
+  language name, so that sentence passes while "fluent English and C1 German"
+  is still caught. Found on a live run: a correct letter was rejected twice and
+  the job routed to `needs_human`.
+
 ### Changed
 - README tagline and opening now state the project's own stance: it is the agent that
   presses Submit, with the guards that make that safe enforced in code. The 0.4.0 wording
