@@ -3,6 +3,8 @@
 Autonomous job-application pipeline: `discover → enrich → score → tailor → cover-letter → apply`.
 All state lives in a local SQLite DB (`data/honestapply.db`). See `README.md` for the full
 pipeline reference and `DECISIONS.md` for why things are built the way they are.
+If you are running the pipeline for a person rather than changing the code, `AGENTS.md`
+is the operator guide and its rules apply on top of these.
 
 ## Setup & everyday commands
 

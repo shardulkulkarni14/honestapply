@@ -1,0 +1,53 @@
+name: I got hired
+description: Landed a role with honestapply in the loop? Add your card to the hired wall.
+title: "Hired: <role family> in <country>"
+labels: ["hired"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for coming back to say so. A maintainer verifies each entry by hand and
+        adds it to [HIRED.md](../blob/main/HIRED.md); the count badge in the README reads
+        from that file. Share only what you are comfortable having public forever.
+  - type: input
+    id: role
+    attributes:
+      label: Role family and country
+      description: Keep it general, e.g. "backend engineer, Germany". No company name needed.
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How did honestapply help?
+      options:
+        - It found and scored the posting; I applied by hand
+        - It tailored the résumé / cover letter I sent
+        - It filled the form and I pressed Submit
+        - It submitted the application (--no-dry-run)
+        - Mostly the tracker / dashboard
+    validations:
+      required: true
+  - type: input
+    id: funnel
+    attributes:
+      label: Your funnel (optional)
+      description: e.g. "scored 320, applied 41, interviews 6, offers 1"
+  - type: textarea
+    id: story
+    attributes:
+      label: What would you tell the next person?
+      description: Two or three sentences. Honest beats polished.
+    validations:
+      required: true
+  - type: dropdown
+    id: privacy
+    attributes:
+      label: How should the card show you?
+      options:
+        - GitHub handle
+        - First name only
+        - Anonymous
+      default: 2
+    validations:
+      required: true

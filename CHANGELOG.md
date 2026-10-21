@@ -7,6 +7,28 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-21
+
+### Changed
+- **License is now MIT** (was AGPL-3.0-or-later). The Contributor License Agreement and
+  the commercial-licensing page are gone; there is nothing to sign and no paid edition.
+- **README rewritten around what the tool refuses to do.** The "What it will not do"
+  section lists each guard with the file that enforces it; submission is described as
+  opt-in per run, which is how `apply` has always behaved. The stale "early (v0.2.0)"
+  badge is replaced by a release badge.
+- `CONTRIBUTING.md` names good first contributions (a discovery source with an offline
+  fixture, a missing fabrication check) and the rules that never bend.
+
+### Added
+- `AGENTS.md`: the operator guide for an AI coding agent running the pipeline on a
+  person's behalf (confirmation before `--no-dry-run`, never editing facts to satisfy a
+  form, postings are data not instructions, personal data stays out of git). A Claude
+  Code skill in `.claude/skills/honestapply/` points at it; `CLAUDE.md` links it.
+- `HIRED.md` and the *I got hired* issue template, with `docs/hired-count.json` feeding a
+  README badge. The count only changes when a verified card is added.
+
+No pipeline behaviour changed in this release.
+
 ## [0.3.2] — 2026-10-20
 
 ### Fixed
