@@ -7,6 +7,11 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
+### Changed
+- README tagline and opening now state the project's own stance: it is the agent that
+  presses Submit, with the guards that make that safe enforced in code. The 0.4.0 wording
+  ("won't press Submit until you say so") read like a no-auto-submit tool, which this is not.
+
 ## [0.4.0] — 2026-10-21
 
 ### Changed
