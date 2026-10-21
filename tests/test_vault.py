@@ -94,3 +94,20 @@ def test_listing_is_metadata_only(file_vault):
     assert {s["site"] for s in sites} == {"a.example", "b.example"}
     # no secret-bearing key in the listed metadata
     assert all("password" not in s and "secret" not in s for s in sites)
+
+
+def test_default_password_fits_common_portal_policies():
+    """SAP SuccessFactors career sites cap passwords at 18 characters; a 20-char
+    default was rejected on a live signup. The default must stay inside 8-18 and
+    still mix all four classes, with no whitespace."""
+    import string
+
+    import honestapply.vault as V
+
+    for _ in range(50):
+        pw = V.generate_password()
+        assert 8 <= len(pw) <= 18
+        assert not any(c.isspace() for c in pw)
+        assert all(c in string.printable for c in pw)
+        assert any(c.islower() for c in pw) and any(c.isupper() for c in pw)
+        assert any(c.isdigit() for c in pw) and any(c in V._SYMBOLS for c in pw)
