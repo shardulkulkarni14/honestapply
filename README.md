@@ -5,56 +5,71 @@
   <img alt="honestapply" src="docs/logo-light.svg" height="44">
 </picture>
 
-**A job-application agent that can't lie on your behalf — and that you can leave running.**
+**A job-application agent that can't lie on your behalf, and won't press Submit until you say so.**
 
 [![CI](https://github.com/shardulkulkarni14/honestapply/actions/workflows/ci.yml/badge.svg)](https://github.com/shardulkulkarni14/honestapply/actions/workflows/ci.yml)
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11–3.13](https://img.shields.io/badge/python-3.11%E2%80%933.13-blue.svg)](pyproject.toml)
-[![Status: early (v0.2.0)](https://img.shields.io/badge/status-early%20(v0.2.0)-orange.svg)](CHANGELOG.md)
+[![Latest release](https://img.shields.io/github/v/release/shardulkulkarni14/honestapply?label=release)](https://github.com/shardulkulkarni14/honestapply/releases)
+[![Hired with honestapply](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fshardulkulkarni14%2Fhonestapply%2Fmain%2Fdocs%2Fhired-count.json&query=%24.count&label=hired%20with%20honestapply&color=2ea44f)](HIRED.md)
 
-**[Quickstart](#quickstart) · [Running it for real](#running-it-for-real) · [Safety](SECURITY.md) · [License](#license--commercial-use)**
+**[See it work in a minute](#see-it-work-in-a-minute) · [What it will not do](#what-it-will-not-do) · [Quickstart](#quickstart) · [Works inside Claude Code](#works-inside-claude-code-and-codex) · [Safety](SECURITY.md)**
 
 </div>
 
-It finds roles, scores them, tailors a résumé, writes a cover letter, and fills in the
-application. Everything runs on your own machine: your résumé never reaches a service,
-and submissions come from your own browser and your own connection.
+I built this during my own search in Germany, after watching tools that "apply for you"
+send résumés with skills I did not have to jobs I did not want. honestapply finds roles,
+scores them, tailors a résumé, writes a cover letter and fills in the form. The difference
+is where the guardrails live: **in the code, where the model cannot talk its way past
+them.** Every fact in your résumé is checked verbatim after tailoring. A language you rate
+A2 is never called fluent. Submission is off until you turn it on for a run, and even then
+the first few are dry.
+
+Everything runs on your own machine. Your résumé never reaches a service, there is no
+account, and submissions come from your own browser and your own connection.
+
+## See it work in a minute
 
 ```bash
-honestapply init && honestapply simulate   # full pipeline, offline, no API key, no browser — see it work first
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -e ".[all]"
+honestapply init && honestapply simulate   # whole pipeline, offline, no API key, no browser
 ```
 
-## Why this one is different
+`simulate` runs every stage end to end on fake jobs with a stub model and prints what each
+stage produced. It is the honest demo: nothing is mocked around, the real code runs.
 
-**1. It can't fabricate. That's enforced, not requested.**
-Every string under `resume_facts` in your résumé YAML is immutable. After the model
-rewrites your CV for a job, each fact is substring-checked against the output; a mismatch
-retries once and then routes the job to a human. No model sits in that verification path,
-so "add a PhD" fails closed even if the model complies. Language claims get the same
-treatment: if your profile says German is A2, no letter will call you fluent.
+## What it will not do
 
-**2. Safety-first by default, with a hard ceiling you can't override.** The first
-submissions of every run are dry, same-domain submits are spaced out, and a conservative
-daily cap applies — all sensible defaults. The one true constant is the hard daily ceiling
-(`HARD_DAILY_CEILING`), which no config or environment variable can raise.
+Each line below is enforced by code, not asked of the model in a prompt, and all but the last are pinned by tests.
 
-| Guard | Value |
-|---|---|
-| First submissions of every run | dry run |
-| Same-domain interval | ≥90s ± 30s jitter |
-| Daily cap | 25, under a hard ceiling of 50 that config and env cannot raise |
-| Dedup | three independent checks |
-| CAPTCHAs | never solved — routed to `needs_human` |
-| LinkedIn Easy Apply | off, behind two explicit opt-ins |
+- **Submit on its own.** `honestapply run` stops before the apply stage. `honestapply apply`
+  is dry-run by default: it fills the form and stops. Real submission needs `--no-dry-run`
+  for that run, and the first jobs of every run are still dry
+  (`src/honestapply/stages/apply.py`).
+- **Invent a fact.** Every string under `resume_facts` must survive tailoring verbatim.
+  The check is a substring comparison with no model in the path; a miss retries once, then
+  routes the job to `needs_human` (`src/honestapply/stages/tailor.py`).
+- **Overstate a language.** CEFR levels in your profile cap what a cover letter may claim.
+- **Apply below the fit gate.** Jobs under `min_score` (default 7 of 10) are
+  `skipped_low_fit` with the model's reasoning kept, so you can read why.
+- **Send more than 50 applications a day.** The default cap is 25; the ceiling of 50 is a
+  constant that no config or environment variable can raise (`src/honestapply/config.py`).
+- **Solve a CAPTCHA, rotate proxies, or use a stealth browser.** Those forms go to
+  `needs_human`, or to `honestapply apply-packet`, which hands you a filled packet to finish.
+- **Touch LinkedIn Easy Apply** without two explicit opt-ins.
+- **Phone home.** No telemetry, no server, one SQLite file.
 
-**3. Nothing leaves your machine.** State is one SQLite file. There's no account, no
-server, and no subscription to cancel. It submits from your residential IP and real
-contact details, because it isn't trying to look like anything other than you.
+The threat model, including what this does *not* defend against, is in
+[SECURITY.md](SECURITY.md).
 
-Most open-source job agents stop before the submit button. This one presses it — and the
-reasons that's safe are in the code, not in this README. There is no proxy rotation, no
-stealth driver, and no CAPTCHA solving here, by design. See [SECURITY.md](SECURITY.md)
-for the threat model, including what it does *not* defend against.
+## Works inside Claude Code and Codex
+
+You do not need the dashboard to drive it. Open the repo in Claude Code, Codex, OpenCode
+or Cursor and ask for what you want ("score the new Munich postings", "what is waiting
+on me", "dry-run the three best"). [`AGENTS.md`](AGENTS.md) is the operator guide the
+agent follows, including the rule that a real submission needs your yes in that session.
+A Claude Code skill in `.claude/skills/honestapply/` points at the same guide.
 
 ## Quickstart
 
@@ -62,6 +77,7 @@ for the threat model, including what it does *not* defend against.
 # 1. Environment (Python 3.12 venv recommended on macOS — see DECISIONS.md)
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[all]"
+# or, without a checkout:  pipx install "honestapply[all] @ git+https://github.com/shardulkulkarni14/honestapply"
 
 # 2. Creates .env + live config from the examples, seeds an example résumé, makes the DB
 honestapply init
@@ -265,22 +281,16 @@ These are asserted by tests, so weakening one fails the build rather than passin
 - [SECURITY.md](SECURITY.md) — threat model, prompt injection, what this doesn't defend against
 - [DECISIONS.md](DECISIONS.md) — why things are built the way they are
 
-## License & commercial use
+## License
 
-Copyright © 2026 Shardul Kulkarni.
-
-honestapply is free and open source under **[AGPL-3.0-or-later](LICENSE)**. Run it on your
-own machine or self-host it for your team at no cost.
-
-If you want to **embed it in a closed-source product**, **offer a modified version as a
-hosted service without releasing your source**, or you'd rather **use a fully managed
-edition** and not run anything yourself, a commercial license and managed hosting are
-available — see **[COMMERCIAL.md](COMMERCIAL.md)** or email
-[shardul.ask@gmail.com](mailto:shardul.ask@gmail.com).
+MIT. Copyright © 2026 Shardul Kulkarni. See [LICENSE](LICENSE).
 
 ## Contributing
 
-Contributions are welcome. Because honestapply is dual-licensed (open source **and**
-commercial), contributors sign a lightweight **[Contributor License Agreement](CLA.md)**
-so the project can keep offering both — you keep ownership of your work, and the project
-keeps the right to include it in the commercial edition.
+Contributions are welcome and there is nothing to sign. A new discovery source, a
+fabrication check that is still missing, or anything that makes the `needs_human` queue
+faster to clear are the best first pull requests; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+If honestapply was part of a search that worked out, add your card to
+[HIRED.md](HIRED.md) with the *I got hired* issue template. The count badge above reads
+from that file and nothing else.
