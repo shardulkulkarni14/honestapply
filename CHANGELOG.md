@@ -7,6 +7,13 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
+### Fixed
+- **Managed portal passwords are 16 characters, not 20.** SAP SuccessFactors career
+  sites cap passwords at 18 characters, so the auto-signup's 20-character password was
+  rejected on a live run and the job routed to `needs_human`. The default for new and
+  rotated passwords is now 16 mixed-class characters, inside the common 8-18 window.
+  Existing stored passwords are untouched; `honestapply accounts rotate <site>` re-issues one.
+
 ## [0.4.1] — 2026-10-21
 
 ### Fixed

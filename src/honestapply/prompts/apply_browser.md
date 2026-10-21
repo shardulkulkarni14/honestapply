@@ -152,7 +152,7 @@ password you will never see**.
    password every time, so "password" and "confirm password" will match.
    - If the form shows a **password policy** (length/among character classes) and
      rejects the value, the managed password already mixes upper/lower/digit/symbol
-     and is 20 chars — it should pass; if a site demands something unusual, stop
+     and is 16 chars (inside the usual 8-18 window) — it should pass; if a site demands something unusual, stop
      with `needs_human` and say what the policy required.
 4. **Accept required terms/consent** checkboxes that are necessary to register
    (privacy/data-processing). Do not opt into marketing unless required.

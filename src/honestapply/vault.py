@@ -50,11 +50,16 @@ class VaultError(RuntimeError):
 _SYMBOLS = "!@#$%^&*-_=+"
 
 
-def generate_password(length: int = 20) -> str:
+def generate_password(length: int = 16) -> str:
     """A strong random password guaranteed to mix lower/upper/digit/symbol.
 
     Many portals enforce a character-class policy; token_urlsafe alone can (rarely)
-    miss a class, so we regenerate until all four are present."""
+    miss a class, so we regenerate until all four are present.
+
+    The default is 16, not longer: enterprise portals commonly cap passwords
+    (SAP SuccessFactors career sites: 8-18 characters), and a 20-character
+    password was rejected on a live signup. 16 mixed-class characters is still
+    far beyond any brute-force concern for a job-portal account."""
     length = max(length, 12)
     pool = string.ascii_letters + string.digits + _SYMBOLS
     while True:
@@ -205,7 +210,7 @@ class Vault:
     def has_password(self, site: str) -> bool:
         return self._b.get(_pw_key(site)) is not None
 
-    def ensure_password(self, site: str, email: str = "", *, length: int = 20) -> bool:
+    def ensure_password(self, site: str, email: str = "", *, length: int = 16) -> bool:
         """Create+store a strong password for *site* if none exists.
 
         Returns True if a new password was created, False if one already existed.
@@ -230,7 +235,7 @@ class Vault:
         only. Never log, print, or return this to the agent."""
         return self._b.get(_pw_key(site))
 
-    def rotate(self, site: str, *, length: int = 20) -> bool:
+    def rotate(self, site: str, *, length: int = 16) -> bool:
         """Replace the stored password with a fresh one. Returns True if a site
         entry existed to rotate."""
         if not self.has_password(site):
