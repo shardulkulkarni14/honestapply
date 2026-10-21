@@ -5,7 +5,7 @@
   <img alt="honestapply" src="docs/logo-light.svg" height="44">
 </picture>
 
-**A job-application agent that can't lie on your behalf, and won't press Submit until you say so.**
+**The job-application agent that presses Submit, and can prove why that is safe.**
 
 [![CI](https://github.com/shardulkulkarni14/honestapply/actions/workflows/ci.yml/badge.svg)](https://github.com/shardulkulkarni14/honestapply/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -17,13 +17,15 @@
 
 </div>
 
-I built this during my own search in Germany, after watching tools that "apply for you"
-send résumés with skills I did not have to jobs I did not want. honestapply finds roles,
-scores them, tailors a résumé, writes a cover letter and fills in the form. The difference
-is where the guardrails live: **in the code, where the model cannot talk its way past
-them.** Every fact in your résumé is checked verbatim after tailoring. A language you rate
-A2 is never called fluent. Submission is off until you turn it on for a run, and even then
-the first few are dry.
+Most open-source job tools stop at the form and hand it back to you. honestapply goes
+through with it: it finds roles, scores them, tailors a résumé, writes the cover letter,
+fills the form and submits, while you sleep if you want. That only works if the guardrails
+live **in the code, where the model cannot talk its way past them**, and that is what this
+project is. Every fact in your résumé is checked verbatim after tailoring; a language you
+rate A2 is never called fluent; a daily ceiling no config can raise; the first submissions
+of every run dry so you see the forms before any go out. I built it during my own search
+in Germany, after watching "apply for you" tools send skills I did not have to jobs I did
+not want.
 
 Everything runs on your own machine. Your résumé never reaches a service, there is no
 account, and submissions come from your own browser and your own connection.
@@ -43,10 +45,10 @@ stage produced. It is the honest demo: nothing is mocked around, the real code r
 
 Each line below is enforced by code, not asked of the model in a prompt, and all but the last are pinned by tests.
 
-- **Submit on its own.** `honestapply run` stops before the apply stage. `honestapply apply`
-  is dry-run by default: it fills the form and stops. Real submission needs `--no-dry-run`
-  for that run, and the first jobs of every run are still dry
-  (`src/honestapply/stages/apply.py`).
+- **Submit before you have seen it work.** `honestapply apply` is dry-run by default and
+  fills forms without sending; `--no-dry-run` turns submission on for a run, and the first
+  jobs of that run are still dry so you can inspect them. `honestapply run` never reaches
+  the apply stage at all (`src/honestapply/stages/apply.py`).
 - **Invent a fact.** Every string under `resume_facts` must survive tailoring verbatim.
   The check is a substring comparison with no model in the path; a miss retries once, then
   routes the job to `needs_human` (`src/honestapply/stages/tailor.py`).
