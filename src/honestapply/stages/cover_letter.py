@@ -233,29 +233,62 @@ def validate_cover_letter(body: str, resume: Resume) -> list[str]:
     """
     text = (body or "").lower()
     issues: list[str] = []
-    for lang, actual in _actual_levels(resume).items():
-        names = _LANG_ALIASES.get(lang, [lang])
-        name_alt = "|".join(re.escape(n) for n in names)
+    levels = _actual_levels(resume)
+    for lang, actual in levels.items():
         for claim, crank in _CLAIM_RANK.items():
             if crank <= actual:
                 continue
-            # Allow German adjectival inflection ("verhandlungssicher" →
-            # "verhandlungssicheres") for single-word claims; keep tight
-            # boundaries for short CEFR codes like "c1"/"b2".
-            if claim.isalpha() and len(claim) >= 5:
-                cpat = rf"{re.escape(claim)}\w*"
-            else:
-                cpat = rf"{re.escape(claim)}\b"
-            near = (
-                rf"\b{cpat}[\w\s,()/-]{{0,15}}\b(?:{name_alt})\b"
-                rf"|\b(?:{name_alt})\b[\w\s,()/-]{{0,15}}\b{cpat}"
-            )
-            if re.search(near, text):
+            if _claim_attached_to(text, claim, lang, levels):
                 issues.append(
                     f"letter claims '{claim}' for {lang}, but candidate's level is lower"
                 )
                 break  # one flag per language is enough
     return issues
+
+
+_GAP = r"[\w\s,()/-]{0,15}"
+
+
+def _claim_pattern(claim: str) -> str:
+    # Allow German adjectival inflection ("verhandlungssicher" →
+    # "verhandlungssicheres") for single-word claims; keep tight boundaries
+    # for short CEFR codes like "c1"/"b2".
+    if claim.isalpha() and len(claim) >= 5:
+        return rf"\b{re.escape(claim)}\w*"
+    return rf"\b{re.escape(claim)}\b"
+
+
+def _nearest_language(text: str, start: int, end: int, known: dict[str, int]) -> str | None:
+    """Which language name sits closest to the claim at text[start:end]?
+
+    Proximity alone misreads "English (C1) and German (A2)" as a C1 claim for
+    German: both names are within the window. The claim belongs to whichever
+    language name is nearest, so the gap to each side is measured and the
+    closest wins. Returns None when no name is within reach on either side.
+    """
+    best: tuple[int, str] | None = None
+    for lang in set(known) | set(_LANG_ALIASES):
+        name_alt = "|".join(re.escape(n) for n in _LANG_ALIASES.get(lang, [lang]))
+        for m in re.finditer(rf"\b(?:{name_alt})\b", text):
+            if m.end() <= start:
+                gap = text[m.end():start]
+            elif m.start() >= end:
+                gap = text[end:m.start()]
+            else:
+                continue
+            if not re.fullmatch(_GAP, gap):
+                continue
+            if best is None or len(gap) < best[0]:
+                best = (len(gap), lang)
+    return best[1] if best else None
+
+
+def _claim_attached_to(text: str, claim: str, lang: str, known: dict[str, int]) -> bool:
+    """True when some occurrence of `claim` in `text` is attached to `lang`."""
+    for m in re.finditer(_claim_pattern(claim), text):
+        if _nearest_language(text, m.start(), m.end(), known) == lang:
+            return True
+    return False
 
 
 def _fetch_company_research(company: str) -> str:

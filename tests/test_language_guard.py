@@ -50,3 +50,27 @@ def test_profile_cap_overrides_overstated_resume(german_a2):
     # résumé over-lists German as C1, but profile caps it at A2 → fluent claim flagged
     issues = validate_cover_letter("I have fluent German.", _resume("German (C1)"))
     assert issues
+
+
+def test_level_of_another_language_in_the_same_sentence_is_not_a_claim(german_a2):
+    """"English (C1) and German (A2)" is not a German C1 claim: the C1 belongs to
+    the nearer language name. Both sides of the pair must stay clean."""
+    from honestapply.stages.cover_letter import validate_cover_letter
+
+    r = _resume("English (C1)", "German (A2)")
+    assert validate_cover_letter("I bring fluent English (C1) and German (A2).", r) == []
+    assert validate_cover_letter(
+        "I communicate in English (C1) and German (A2) with clients.", r
+    ) == []
+    assert validate_cover_letter("German (A2) alongside English at C1 level.", r) == []
+
+
+def test_level_attached_to_the_weaker_language_is_still_caught(german_a2):
+    """Mentioning English nearby must not launder a real German over-claim."""
+    from honestapply.stages.cover_letter import validate_cover_letter
+
+    r = _resume("English (C1)", "German (A2)")
+    assert validate_cover_letter("Fluent English and C1 German.", r) == [
+        "letter claims 'c1' for german, but candidate's level is lower"
+    ]
+    assert validate_cover_letter("English and fluent German (C1).", r) != []
