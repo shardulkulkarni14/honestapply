@@ -8,6 +8,16 @@ versions may still change behaviour).
 ## [Unreleased]
 
 ### Fixed
+- **Cover-letter language guard accepts an honest disclosure of the required level.**
+  "Your posting asks for fluent German; my German is currently A2" was flagged as a
+  fluency claim, because the guard saw the word next to the language name without
+  reading the rest of the sentence. A level that sits in the same sentence as the
+  candidate's real, lower level (A2, basic, Grundkenntnisse, …) is now treated as the
+  truthful disclosure the prompt asks for. "The role requires fluent German, which I
+  bring" is still caught. Found on a live run: eight letters for roles that list a
+  German requirement were rejected twice each and the jobs routed to `needs_human`.
+  The prompt now also asks the writer to put the real level in the same sentence
+  whenever it mentions the requirement.
 - **Managed portal passwords are 16 characters, not 20.** SAP SuccessFactors career
   sites cap passwords at 18 characters, so the auto-signup's 20-character password was
   rejected on a live run and the job routed to `needs_human`. The default for new and
