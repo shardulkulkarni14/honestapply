@@ -54,6 +54,25 @@ def test_resolve_finds_posting_and_caches_board(tmp_path):
     assert cached["acmegmbh"]["ats"] == "personio" and cached["acmegmbh"]["token"] == "acme"
 
 
+def test_unrelated_tenant_under_a_short_slug_is_not_trusted(tmp_path):
+    # "Genius Ingenieurbüro IT GmbH" guesses "genius" too, which is somebody
+    # else's Teamtailor site. Without a title match the board is not adopted,
+    # and the real board (found under another guess) still wins.
+    boards = {
+        ("greenhouse", "genius"): [("Head of Sales", "https://boards.greenhouse.io/genius/jobs/1")],
+        ("personio", "geniusingenieurbuero"): [("Technische Leitung (m/w/d)", "https://geniusingenieurbuero.jobs.personio.de/job/5")],
+    }
+    r, _ = _resolver(tmp_path, boards)
+    assert r.resolve("Genius Ingenieurbüro", "Account Manager") is None
+    cached = json.loads((tmp_path / "boards.json").read_text())
+    assert cached["geniusingenieurbuero"]["ats"] is None
+    assert len(cached["geniusingenieurbuero"]["boards"]) == 2
+    hit = r.resolve("Genius Ingenieurbüro", "Technische Leitung (m/w/d)")
+    assert hit and hit["ats"] == "personio"
+    cached = json.loads((tmp_path / "boards.json").read_text())
+    assert cached["geniusingenieurbuero"]["ats"] == "personio"
+
+
 def test_negative_result_is_cached_across_resolvers(tmp_path):
     r, calls = _resolver(tmp_path, {})
     assert r.resolve("Nowhere Corp", "AI Engineer") is None
