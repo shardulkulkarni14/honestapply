@@ -7,6 +7,29 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-25
+
+### Added
+- **Arbeitsagentur is a source, not an apply channel.** Its listing page hides the
+  employer's apply link behind an image CAPTCHA, which parked three of five such jobs
+  on a live run. Discovery now looks the same title up on the employer's public ATS
+  board (Greenhouse, Lever, Ashby, SmartRecruiters, Personio, Recruitee, Workable,
+  Teamtailor; slug guesses from the company name, board cached per company in
+  `data/employer_boards.json`) and stores the employer's posting URL instead. Jobs that
+  still point at `arbeitsagentur.de` are dropped by `prefilter` and refused by `apply`
+  before a browser session is spent. `HONESTAPPLY_ARBEITSAGENTUR_APPLY=true` opts back
+  in; `HONESTAPPLY_ARBEITSAGENTUR_RESOLVE_EMPLOYER=false` turns the lookup off.
+- **Personio, Recruitee, Workable and Teamtailor board adapters** (`ats: personio |
+  recruitee | workable | teamtailor` in `employers.yaml`), the feeds most German SMEs
+  and start-ups publish. Read-only public JSON/XML, no auth, no scraping. Personio and
+  Teamtailor accept `host:` for custom career domains; Personio accepts `language: en`
+  and merges the translation over the default feed (the translated feed is empty for
+  untranslated jobs).
+- `detect_ats` recognises the new hosts plus `join` and `arbeitsagentur`;
+  `is_source_only()` names boards that can be sourced but never applied through.
+- `config/employers.example.yaml` documents the new feeds and ships a German section
+  of verified Personio/Recruitee/Teamtailor boards.
+
 ### Fixed
 - **Cover-letter language guard accepts an honest disclosure of the required level.**
   "Your posting asks for fluent German; my German is currently A2" was flagged as a

@@ -168,7 +168,7 @@ You never have to grant the apply stage anything: `--dry-run` plus
 
 | Stage | Command | What it does |
 |-------|---------|--------------|
-| 1 | `honestapply discover` | JobSpy boards (Indeed/LinkedIn-search/Glassdoor/ZipRecruiter; Google is unreliable) + company boards on Greenhouse/Lever/Ashby **and SmartRecruiters/Workday** (reaches big employers that aren't on the startup ATSes). Triple-deduped. |
+| 1 | `honestapply discover` | JobSpy boards (Indeed/LinkedIn-search/Glassdoor/ZipRecruiter; Google is unreliable), the **Arbeitsagentur** Jobbörse (official read API; Germany's largest public job database), and company boards on Greenhouse/Lever/Ashby, **SmartRecruiters/Workday** (big employers) and **Personio/Recruitee/Workable/Teamtailor** (the feeds German SMEs and start-ups use). Arbeitsagentur is a *source*, not an apply channel: its listing page gates the employer link behind a CAPTCHA, so discovery swaps it for the employer's own posting on a public board when the same title is found there, and whatever still points at the listing page is dropped by prefilter and refused by apply. Triple-deduped. |
 | 1.5 | `honestapply prefilter` | Cheap **no-LLM** relevance gate: routes obvious non-fits (dead Indeed/LinkedIn hosts, interns/Werkstudent/warehouse/customer-service titles) to `skipped_low_fit` so the expensive LLM stages only see plausible roles. |
 | 2 | `honestapply enrich` | Full JD via cascade: JSON-LD `JobPosting` → ATS CSS selectors → LLM fallback. |
 | 3 | `honestapply score` | LLM fit score 1–10 + reasoning + matched/gap keywords. Gate at `min_score` (default 7). |
@@ -262,10 +262,15 @@ These are asserted by tests, so weakening one fails the build rather than passin
   search results (the JobSpy sources, LinkedIn search included) and automated submission
   both run against many boards' ToS; LinkedIn especially carries ban risk (hence Easy Apply
   is disabled by default). You are responsible for how you use this. The defaults err toward
-  caution, and the company board APIs (Greenhouse/Lever/Ashby) are the recommended,
-  ToS-clean primary source.
+  caution, and the company board APIs (Greenhouse/Lever/Ashby/SmartRecruiters/Personio/
+  Recruitee/Workable/Teamtailor) plus the Arbeitsagentur read API are the recommended,
+  ToS-clean primary sources.
 - **JobSpy scrapers are flaky** and often blocked from servers/datacenter IPs. Company
-  board APIs (Greenhouse/Lever/Ashby) are reliable and are the recommended primary source.
+  board APIs are reliable and are the recommended primary source.
+- **Arbeitsagentur listings without an employer link cannot be applied to automatically.**
+  The employer-board lookup finds the posting for companies on a public ATS; employers
+  with their own portal (REWE, ALTEN, …) stay source-only and need a manual application
+  (`honestapply apply-packet` prepares the documents).
 - **The apply stage needs Playwright MCP + a logged-in browser** for portals that require
   auth. Log in once in the persisted profile (`~/.honestapply/browser-profile`); sessions
   carry over. No CAPTCHA solving — those go to `needs_human`.

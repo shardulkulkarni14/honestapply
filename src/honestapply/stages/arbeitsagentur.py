@@ -15,6 +15,13 @@ other source. Keep it that way: do not publish, export, or bulk-share results.
 A search entry opts in with ``board: arbeitsagentur`` in ``searches.yaml``.
 Descriptions are not in the list response; the normal ``enrich`` stage fetches
 each full posting from its URL afterwards.
+
+**Source, not apply channel.** When a listing carries no ``externeURL`` the only
+URL is the Jobbörse detail page, whose employer contact/apply link sits behind
+an image CAPTCHA. :func:`attach_employer_links` swaps such URLs for the
+employer's own posting when a public ATS board carries the same title (see
+``honestapply.ats.resolve``); the rest are dropped by ``prefilter`` and refused
+by ``apply`` (``HONESTAPPLY_ARBEITSAGENTUR_APPLY`` opts back in).
 """
 
 from __future__ import annotations
@@ -164,3 +171,40 @@ def run_arbeitsagentur_search(entry: Any) -> list[dict]:
             break  # last page
 
     return results
+
+
+def attach_employer_links(results: list[dict], resolver: Any, skip_ids: set[str] | frozenset[str] = frozenset()) -> int:
+    """Replace Jobbörse detail-page URLs with the employer's own posting.
+
+    ``resolver`` is a :class:`honestapply.ats.resolve.BoardResolver`. Listings
+    whose reference number is in ``skip_ids`` (already in the DB) are left
+    alone so repeat discovery runs do not re-probe known jobs. Returns the
+    number of listings relinked. Never raises: a resolver failure leaves the
+    listing URL in place.
+    """
+    from honestapply.ats.detect import ARBEITSAGENTUR, detect_ats
+
+    relinked = 0
+    for job in results:
+        if job.get("external_id") in skip_ids:
+            continue
+        if detect_ats(job.get("url") or "") != ARBEITSAGENTUR:
+            continue
+        try:
+            hit = resolver.resolve(job.get("company") or "", job.get("title") or "")
+        except Exception as exc:  # network / parse noise must not break discovery
+            log.warning("discover.arbeitsagentur_resolve_error", company=job.get("company"), error=str(exc))
+            continue
+        if not hit:
+            continue
+        job["url"] = hit["url"]
+        job["_resolved_board"] = hit["ats"]
+        relinked += 1
+        log.info(
+            "discover.arbeitsagentur_relinked",
+            company=job.get("company"),
+            title=job.get("title"),
+            ats=hit["ats"],
+            similarity=hit.get("similarity"),
+        )
+    return relinked

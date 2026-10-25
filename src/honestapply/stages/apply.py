@@ -681,6 +681,27 @@ def _process_job(
                 s.add(Application(job_id=j.id, mode="dry_run", status="needs_human", error_log=reason))
         return
 
+    # ── SOURCE-ONLY guard ─────────────────────────────────────────────────────
+    # The Arbeitsagentur detail page has no form: the employer's apply link sits
+    # behind an image CAPTCHA the agent never solves. Discovery already tried to
+    # swap the URL for the employer's own posting; if it still points here, route
+    # to a human instead of spending a browser session.
+    from honestapply.ats.detect import is_source_only
+
+    if is_source_only(ats_type) and not getattr(settings, "honestapply_arbeitsagentur_apply", False):
+        reason = (
+            "Arbeitsagentur listing page only: the employer's apply link is CAPTCHA-gated, "
+            "so there is no form to fill. Find the employer's own posting (apply-packet is ready)."
+        )
+        log.warning("apply.source_only_skip", job_id=job.id, reason=reason)
+        with session_scope() as s:
+            j = s.get(Job, job.id)
+            if j:
+                j.status = Status.NEEDS_HUMAN
+                j.status_reason = reason
+                s.add(Application(job_id=j.id, mode="dry_run", status="needs_human", error_log=reason))
+        return
+
     # ── ACCOUNT-WALLED guard ──────────────────────────────────────────────────
     # Some ATSes (Haufe Umantis, SAP SuccessFactors — common for German
     # employers) require a portal account before any form can be filled. There is

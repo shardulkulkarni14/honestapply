@@ -117,3 +117,29 @@ Newest at the bottom of each phase.
   covered every need.
 - (historical) Streamlit single-file; PDFs embedded as base64 iframes; stage buttons lazy-import so a
   missing/keyless stage never breaks page load. 13 pytest smoke tests, all green offline.
+
+## Sourcing — Germany (2026-10)
+
+- **Arbeitsagentur is a source, not an apply channel.** It is the best German feed
+  (every row is German; it surfaces Mittelstand roles no startup ATS carries), but its
+  listing page hides the employer's contact/apply link behind an image CAPTCHA. On the
+  2026-10-25 run three of five Arbeitsagentur-only listings parked as `needs_human` for
+  exactly that reason while the two with an employer/aggregator link went through.
+  Decision: discovery keeps the feed, `attach_employer_links` swaps the listing URL for
+  the employer's own posting when a public board carries the same title
+  (`ats/resolve.py`: slug guesses from the company name, title token overlap ≥ 0.6,
+  board choice cached per company in `data/employer_boards.json`), and whatever still
+  points at `arbeitsagentur.de` is dropped by `prefilter` and refused by `apply`.
+  `HONESTAPPLY_ARBEITSAGENTUR_APPLY=true` restores the old behaviour.
+- **Feed-based ATSs for German employers: Personio, Recruitee, Workable, Teamtailor.**
+  All four expose unauthenticated JSON/XML feeds, so the adapters are read-only API
+  calls like the Greenhouse/Lever ones — no scraping. Personio's translated feed
+  (`?language=en`) is empty for untranslated jobs, so the default feed is fetched first
+  and the translation merged over it.
+- **JOIN is not a board adapter.** Its public jobs endpoint rejects every page size
+  (422) and the career page is client-rendered; JOIN postings still arrive through
+  Arbeitsagentur `externeURL`s and aggregators and apply fine, so no scraper was added.
+- **SmartRecruiters answers 200 for any company identifier.** The resolver therefore
+  treats an empty board as "no board" and probes SmartRecruiters last; otherwise every
+  company cached as a SmartRecruiters tenant with zero jobs and the search stopped.
+

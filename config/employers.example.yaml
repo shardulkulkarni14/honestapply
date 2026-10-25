@@ -3,7 +3,8 @@
 #
 # Fields:
 #   name  : human-readable company name
-#   ats   : greenhouse | lever | ashby
+#   ats   : greenhouse | lever | ashby | smartrecruiters | workday
+#           | personio | recruitee | workable | teamtailor
 #   token : the board slug / org slug used in the ATS API URL
 #           Leave blank and honestapply will guess `name.lower().replace(" ", "")`.
 #
@@ -16,6 +17,16 @@
 #   Ashby      : visit jobs.ashbyhq.com/<token> — the path segment is the token
 #                (case-insensitive; some companies use their domain, e.g. taxfix.com).
 #                API: GET https://api.ashbyhq.com/posting-api/job-board/<token>
+#   Personio   : the career site is <token>.jobs.personio.de (custom domains: set `host`).
+#                API: GET https://<token>.jobs.personio.de/xml   (add `language: en` for English)
+#   Recruitee  : the career site is <token>.recruitee.com.
+#                API: GET https://<token>.recruitee.com/api/offers/
+#   Workable   : apply.workable.com/<token> — the path segment is the token.
+#                API: GET https://apply.workable.com/api/v1/widget/accounts/<token>?details=true
+#   Teamtailor : the career site is <token>.teamtailor.com (custom domains: set `host`).
+#                API: GET https://<token>.teamtailor.com/jobs.json
+#   (JOIN has no public feed; its postings still arrive through Arbeitsagentur and
+#    aggregator links and apply fine.)
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # US / GLOBAL employers (Greenhouse + Ashby) — verified May 2026
@@ -161,3 +172,32 @@ employers:
   # validated; uncomment + replace with a verified tenant (slugs vary per company):
   # - {name: ExampleCo, ats: workday, token: exampleco,
   #    host: exampleco.wd3.myworkdayjobs.com, site: External}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GERMAN employers on the feed-based ATSs (Personio / Recruitee / Teamtailor)
+# — these host most German SMEs and start-ups; verified live 2026-10-25.
+# ─────────────────────────────────────────────────────────────────────────────
+  - {name: 1KOMMA5°, ats: personio, token: 1komma5grad}                     # ~300 (energy, Hamburg)
+  - {name: SQUER, ats: personio, token: squer}                              # ~25 (applied AI, Munich)
+  - {name: MONTANA Energie-Handel, ats: personio, token: montana}           # Munich
+  - {name: Eraneos Group, ats: personio, token: eraneos}
+  - {name: FTAPI Software, ats: personio, token: ftapi}                     # Munich
+  - {name: Synapticon, ats: personio, token: synapticon}                    # robotics, Stuttgart area
+  - {name: quantilope, ats: personio, token: quantilope-gmbh}              # Hamburg
+  - {name: Validas, ats: personio, token: validas-ag}                       # Munich
+  - {name: fruitcore robotics, ats: personio, token: fruitcore-robotics-gmbh}
+  - {name: Tanso Technologies, ats: personio, token: tanso}                 # Munich
+  - {name: Accso, ats: recruitee, token: accso}                             # Darmstadt/Cologne/Munich
+  - {name: KI Group, ats: recruitee, token: kigroup}                        # Bad Homburg
+  - {name: Natuvion, ats: recruitee, token: natuvion}
+  - {name: shopware, ats: recruitee, token: shopwareag}
+  - {name: Trusted Shops, ats: recruitee, token: trustedshops}              # Cologne
+  - {name: NETCONOMY, ats: recruitee, token: netconomy}
+  - {name: Hygraph, ats: recruitee, token: hygraph}                         # Berlin
+  - {name: gridscale, ats: recruitee, token: gridscale}                     # Cologne
+  - {name: EWOR, ats: teamtailor, token: eworgmbh}
+  - {name: APPSfactory, ats: teamtailor, token: appsfactory}                # Leipzig
+  - {name: Dcubed, ats: teamtailor, token: dcubed}                          # Munich (space tech)
+  - {name: encoway, ats: teamtailor, token: encoway}                        # Bremen
+  # Workable: the adapter is validated; add a company once you have its token, e.g.
+  # - {name: ExampleCo, ats: workable, token: exampleco}

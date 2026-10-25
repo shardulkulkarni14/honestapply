@@ -86,3 +86,16 @@ def test_obvious_junk_still_dropped():
     for title in ("Werkstudent Marketing", "Warehouse Cleaner", "Data Science Intern"):
         keep, _ = is_relevant(title, "https://job-boards.greenhouse.io/acme/jobs/1")
         assert not keep, f"{title!r} should still be dropped"
+
+
+def test_drops_arbeitsagentur_listing_pages_unless_opted_in():
+    keep, reason = is_relevant("AI Engineer", "https://www.arbeitsagentur.de/jobsuche/jobdetail/123-S", "München")
+    assert keep is False and "arbeitsagentur" in reason.lower()
+    # an Arbeitsagentur-discovered job that already carries an employer/aggregator link is fine
+    keep, _ = is_relevant("AI Engineer", "https://www.heyjobs.co/de-de/jobs/abc", "München")
+    assert keep is True
+    # HONESTAPPLY_ARBEITSAGENTUR_APPLY=true keeps the old behaviour
+    keep, _ = is_relevant(
+        "AI Engineer", "https://www.arbeitsagentur.de/jobsuche/jobdetail/123-S", "München", allow_source_only=True
+    )
+    assert keep is True

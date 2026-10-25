@@ -11,7 +11,8 @@ Sources:
     arbeitsagentur:  the Bundesagentur für Arbeit Jobbörse (Germany's largest
                      public job database) via its official read API — no scraping.
                      See stages/arbeitsagentur.py for the personal-use posture.
-    ATS names:       greenhouse, lever, ashby, smartrecruiters, workday
+    ATS names:       greenhouse, lever, ashby, smartrecruiters, workday,
+                     personio, recruitee, workable, teamtailor
 
 The `sources` filter (e.g. ["greenhouse"] or ["indeed", "glassdoor"]) restricts
 which sources are run. If None, all configured sources run.
@@ -30,11 +31,11 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 
 from honestapply.ats.detect import detect_ats
-from honestapply.config import load_employers, load_profile, load_searches
+from honestapply.config import PATHS, get_settings, load_employers, load_profile, load_searches
 from honestapply.db.models import Job, Status, url_hash, utcnow
 from honestapply.db.session import init_db, session_scope
 from honestapply.logging_setup import get_logger
-from honestapply.stages.arbeitsagentur import run_arbeitsagentur_search
+from honestapply.stages.arbeitsagentur import attach_employer_links, run_arbeitsagentur_search
 
 log = get_logger(__name__)
 
@@ -55,6 +56,11 @@ _ATS_MODULES = {
     "ashby": "honestapply.ats.ashby",
     "smartrecruiters": "honestapply.ats.smartrecruiters",
     "workday": "honestapply.ats.workday",
+    # Feed-based boards common with German employers (public JSON/XML).
+    "personio": "honestapply.ats.personio",
+    "recruitee": "honestapply.ats.recruitee",
+    "workable": "honestapply.ats.workable",
+    "teamtailor": "honestapply.ats.teamtailor",
     # Aggregator board: one entry yields postings across many companies, each
     # carrying its own company name (see honestapply.ats.instahyre).
     "instahyre": "honestapply.ats.instahyre",
@@ -147,6 +153,17 @@ def _already_exists(session: Any, uh: str, company: str, title: str) -> bool:
         select(Job.id).where(Job.url_hash == uh).limit(1)
     ).scalar_one_or_none()
     return existing is not None
+
+
+def _known_external_ids(source_board: str) -> set[str]:
+    """Reference numbers already stored for a board (skip re-resolving them)."""
+    from sqlalchemy import select
+
+    with session_scope() as session:
+        rows = session.execute(
+            select(Job.external_id).where(Job.source_board == source_board, Job.external_id != "")
+        ).all()
+    return {r[0] for r in rows if r[0]}
 
 
 def _safe_parse_date(value: Any) -> datetime | None:
@@ -401,6 +418,15 @@ def run_discover(sources: list[str] | None = None, filter_location: bool = True)
 
     inserted_total = 0
 
+    # Arbeitsagentur listings without an employer link get one looked up on the
+    # public ATS boards (source, not apply channel — see stages/arbeitsagentur.py).
+    aa_resolver = None
+    known_aa_ids: set[str] | None = None
+    if get_settings().honestapply_arbeitsagentur_resolve_employer:
+        from honestapply.ats.resolve import BoardResolver
+
+        aa_resolver = BoardResolver(cache_path=PATHS.data_dir / "employer_boards.json")
+
     # ---- 1. jobspy boards ----
     searches = load_searches()
     log.info("discover.searches_loaded", count=len(searches))
@@ -410,6 +436,12 @@ def run_discover(sources: list[str] | None = None, filter_location: bool = True)
             continue
         if entry.board.lower() == "arbeitsagentur":
             raw_jobs = run_arbeitsagentur_search(entry)
+            if aa_resolver is not None:
+                if known_aa_ids is None:
+                    known_aa_ids = _known_external_ids("arbeitsagentur")
+                relinked = attach_employer_links(raw_jobs, aa_resolver, skip_ids=known_aa_ids)
+                if relinked:
+                    log.info("discover.arbeitsagentur_relinked_total", query=entry.query, relinked=relinked)
         else:
             raw_jobs = _run_jobspy_search(entry)
         batch_inserted = 0

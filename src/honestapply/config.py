@@ -93,6 +93,17 @@ class Settings(BaseSettings):
     # Gmail, behind the same dry-run/cap guards. See docs/ACCOUNTS.md.
     honestapply_enable_account_signup: bool = False
 
+    # --- Arbeitsagentur: a source, not an apply channel -----------------------
+    # The Jobbörse's listing page hides the employer's apply link behind an image
+    # CAPTCHA, so it has no automatable form. Discovery therefore tries to swap
+    # the listing URL for the employer's own posting on a public ATS board
+    # (Greenhouse/Lever/Ashby/SmartRecruiters/Personio/Recruitee/Workable/
+    # Teamtailor, matched by company slug + title). Jobs that still point at the
+    # listing page are dropped by prefilter and refused by apply — unless
+    # HONESTAPPLY_ARBEITSAGENTUR_APPLY=true opts back into the old behaviour.
+    honestapply_arbeitsagentur_resolve_employer: bool = True
+    honestapply_arbeitsagentur_apply: bool = False
+
     # --- Needs-human notifications (local, opt-in) ----------------------------
     # Ping your phone when the apply agent hits a CAPTCHA / login wall / a field it
     # can't answer, so you can solve it in the open browser and the SAME run
@@ -306,7 +317,8 @@ class Employer(BaseModel):
     model_config = ConfigDict(extra="allow")
     name: str
     ats: Literal[
-        "greenhouse", "lever", "ashby", "smartrecruiters", "workday", "instahyre"
+        "greenhouse", "lever", "ashby", "smartrecruiters", "workday", "instahyre",
+        "personio", "recruitee", "workable", "teamtailor",
     ]
     # The board identifier in that ATS's URL (e.g. greenhouse board token,
     # lever site, ashby org slug, SmartRecruiters company identifier).
@@ -317,6 +329,9 @@ class Employer(BaseModel):
     #   workday:        `host` (e.g. "acme.wd3.myworkdayjobs.com"), `site`
     #                   (career-site path, e.g. "External"), `tenant` (defaults to
     #                   the host's first sub-domain label)
+    #   personio:       `host` (custom career domain instead of
+    #                   <token>.jobs.personio.de), `language` ("en" for the English feed)
+    #   teamtailor:     `host` (custom career domain instead of <token>.teamtailor.com)
 
     def board_token(self) -> str:
         return self.token or self.name.lower().replace(" ", "")
