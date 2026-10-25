@@ -284,11 +284,38 @@ def _nearest_language(text: str, start: int, end: int, known: dict[str, int]) ->
 
 
 def _claim_attached_to(text: str, claim: str, lang: str, known: dict[str, int]) -> bool:
-    """True when some occurrence of `claim` in `text` is attached to `lang`."""
+    """True when some occurrence of `claim` in `text` is attached to `lang`
+    and is not part of an honest disclosure of the candidate's real level."""
     for m in re.finditer(_claim_pattern(claim), text):
-        if _nearest_language(text, m.start(), m.end(), known) == lang:
-            return True
+        if _nearest_language(text, m.start(), m.end(), known) != lang:
+            continue
+        if _discloses_actual_level(text, m.start(), known[lang]):
+            continue
+        return True
     return False
+
+
+_SENTENCE_BREAK = re.compile(r"[.!?\n]")
+_DISCLOSURE_WORDS = ("beginner", "elementary", "grundkenntnisse", "anfänger", "anfaenger")
+
+
+def _discloses_actual_level(text: str, pos: int, actual: int) -> bool:
+    """Is the sentence around text[pos] an honest disclosure rather than a claim?
+
+    A letter that writes "your posting asks for fluent German; my German is
+    currently A2" names the required level, but the same sentence states the
+    candidate's real, lower level. That is the truthful behaviour the prompt
+    asks for, so a level at or below the actual rank in the same sentence
+    exempts the occurrence. "The role requires fluent German, which I bring"
+    has no such disclosure and stays flagged.
+    """
+    starts = [m.end() for m in _SENTENCE_BREAK.finditer(text, 0, pos)]
+    start = starts[-1] if starts else 0
+    nxt = _SENTENCE_BREAK.search(text, pos)
+    sentence = text[start: nxt.start() if nxt else len(text)]
+    honest = [tok for tok, rank in _LEVEL_RANK.items() if rank <= actual]
+    honest += list(_DISCLOSURE_WORDS)
+    return any(re.search(rf"\b{re.escape(tok)}\b", sentence) for tok in honest)
 
 
 def _fetch_company_research(company: str) -> str:

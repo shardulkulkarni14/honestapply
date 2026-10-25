@@ -74,3 +74,25 @@ def test_level_attached_to_the_weaker_language_is_still_caught(german_a2):
         "letter claims 'c1' for german, but candidate's level is lower"
     ]
     assert validate_cover_letter("English and fluent German (C1).", r) != []
+
+
+def test_honest_disclosure_of_the_required_level_is_not_a_claim(german_a2):
+    from honestapply.stages.cover_letter import validate_cover_letter
+
+    # Naming the posting's requirement while stating the real level is honest.
+    for body in (
+        "While your posting asks for fluent German, my German is currently A2.",
+        "Your role asks for German at C1; I want to be upfront that my German is A2 today.",
+        "Mein Deutsch ist auf Grundkenntnisse-Niveau (A2), nicht fließend.",
+    ):
+        assert validate_cover_letter(body, _resume("German (A2)")) == []
+
+
+def test_claim_without_disclosure_is_still_caught(german_a2):
+    from honestapply.stages.cover_letter import validate_cover_letter
+
+    for body in (
+        "The role requires fluent German, which I bring to the table.",
+        "I am a C1 German speaker. My English is C1 and my German is A2 on paper.",
+    ):
+        assert validate_cover_letter(body, _resume("German (A2)"))

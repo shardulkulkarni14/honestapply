@@ -45,6 +45,8 @@ Write exactly 3 short paragraphs:
 - NEVER claim a language proficiency beyond the Languages listed above. If the job
   wants "native German" and the candidate is A2 German, do NOT say or imply they are a
   native or fluent German speaker. Either omit the topic or state the real level honestly.
+  Prefer not to quote the required level at all; if you do mention it, state the
+  candidate's real level in the same sentence (e.g. "my German is currently A2").
 - NEVER claim a certification, degree, employer, title, or number of years of experience
   that is not in the candidate facts. Do not invent customers, products, or metrics.
 - If the role requires a qualification the candidate lacks, do not paper over it with a
