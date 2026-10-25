@@ -143,14 +143,25 @@ def _probe_ashby(slug: str) -> list[tuple[str, str]] | None:
     return [(j.get("title") or "", j.get("jobUrl") or "") for j in data["jobs"]]
 
 
+_SR_PAGE = 100
+_SR_MAX_PAGES = 5
+
+
 def _probe_smartrecruiters(slug: str) -> list[tuple[str, str]] | None:
-    data = _get_json(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings", {"limit": "100"})
-    if not isinstance(data, dict) or "content" not in data:
-        return None
-    out = []
-    for j in data["content"]:
-        company = (j.get("company") or {}).get("identifier") or slug
-        out.append((j.get("name") or "", f"https://jobs.smartrecruiters.com/{company}/{j.get('id')}"))
+    """Paginated: big tenants (ALTEN, Bosch) list well over 100 postings."""
+    out: list[tuple[str, str]] = []
+    for page in range(_SR_MAX_PAGES):
+        data = _get_json(
+            f"https://api.smartrecruiters.com/v1/companies/{slug}/postings",
+            {"limit": str(_SR_PAGE), "offset": str(page * _SR_PAGE)},
+        )
+        if not isinstance(data, dict) or "content" not in data:
+            return out or None
+        for j in data["content"]:
+            company = (j.get("company") or {}).get("identifier") or slug
+            out.append((j.get("name") or "", f"https://jobs.smartrecruiters.com/{company}/{j.get('id')}"))
+        if len(data["content"]) < _SR_PAGE:
+            break
     return out
 
 
@@ -260,46 +271,59 @@ class BoardResolver:
             self._boards[key] = jobs or None  # empty board == no board
         return self._boards[key]
 
-    def find_board(self, company: str, hint_domain: str | None = None) -> tuple[str, str] | None:
-        """Which (ats, slug) hosts this company's jobs? None when no board answers."""
+    def candidate_boards(self, company: str, hint_domain: str | None = None) -> list[tuple[str, str]]:
+        """Every (ats, slug) that answers with open jobs for this company's slug guesses.
+
+        A short guess such as the company's first word ("amazon", "genius") can
+        land on an unrelated tenant, so no board is trusted on its own: the
+        caller confirms one by matching a title. Probing happens once per
+        company; the list (or its absence) is cached.
+        """
         self._load()
         key = _company_key(company)
         entry = self._cache.get(key)
         if entry:
             if entry.get("ats"):
-                return entry["ats"], entry["token"]
-            checked = float(entry.get("checked", 0))
-            if time.time() - checked < _NEGATIVE_TTL_DAYS * 86400:
-                return None
+                return [(entry["ats"], entry["token"])]
+            if time.time() - float(entry.get("checked", 0)) < _NEGATIVE_TTL_DAYS * 86400:
+                return [tuple(b) for b in entry.get("boards") or []]
+        boards: list[tuple[str, str]] = []
         for slug in slug_candidates(company, hint_domain):
             for ats in self.probes:
-                jobs = self._board_jobs(ats, slug)
-                if jobs is None:
-                    continue
-                self._cache[key] = {"ats": ats, "token": slug, "company": company, "checked": time.time()}
-                self._save()
-                log.info("resolve.board_found", company=company, ats=ats, token=slug, jobs=len(jobs))
-                return ats, slug
-        self._cache[key] = {"ats": None, "company": company, "checked": time.time()}
+                if self._board_jobs(ats, slug):
+                    boards.append((ats, slug))
+        self._cache[key] = {"ats": None, "company": company, "boards": boards, "checked": time.time()}
         self._save()
-        return None
+        if boards:
+            log.info("resolve.boards_found", company=company, boards=boards)
+        return boards
+
+    def find_board(self, company: str, hint_domain: str | None = None) -> tuple[str, str] | None:
+        """The confirmed board for this company, or the first candidate when none
+        has been confirmed by a title match yet. None when no board answers."""
+        boards = self.candidate_boards(company, hint_domain)
+        return boards[0] if boards else None
 
     def resolve(self, company: str, title: str, hint_domain: str | None = None) -> dict | None:
         """The employer's own posting for this title, or None.
 
-        Returns ``{"url", "ats", "token", "title", "similarity"}``.
+        Returns ``{"url", "ats", "token", "title", "similarity"}``. The board
+        that yields a match is remembered as the company's board.
         """
-        board = self.find_board(company, hint_domain)
-        if not board:
+        best: tuple[float, str, str, str, str] | None = None
+        for ats, slug in self.candidate_boards(company, hint_domain):
+            for other_title, url in self._board_jobs(ats, slug) or []:
+                if not url:
+                    continue
+                sim = title_similarity(title, other_title)
+                if best is None or sim > best[0]:
+                    best = (sim, other_title, url, ats, slug)
+        if not best or best[0] < self.min_similarity:
             return None
-        ats, slug = board
-        best: tuple[float, str, str] | None = None
-        for other_title, url in self._board_jobs(ats, slug) or []:
-            if not url:
-                continue
-            sim = title_similarity(title, other_title)
-            if best is None or sim > best[0]:
-                best = (sim, other_title, url)
-        if best and best[0] >= self.min_similarity:
-            return {"url": best[2], "ats": ats, "token": slug, "title": best[1], "similarity": round(best[0], 2)}
-        return None
+        sim, other_title, url, ats, slug = best
+        key = _company_key(company)
+        if not (self._cache.get(key) or {}).get("ats"):
+            self._cache[key] = {"ats": ats, "token": slug, "company": company, "checked": time.time()}
+            self._save()
+            log.info("resolve.board_confirmed", company=company, ats=ats, token=slug)
+        return {"url": url, "ats": ats, "token": slug, "title": other_title, "similarity": round(sim, 2)}

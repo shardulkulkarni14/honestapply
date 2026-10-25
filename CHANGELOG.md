@@ -7,6 +7,18 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-10-25
+
+### Fixed
+- **Employer-board resolver no longer adopts a stranger's board.** A short slug guess
+  such as a company's first word ("amazon", "genius", "westhouse") can land on an
+  unrelated tenant; the first live board was cached as the company's and the real one
+  never probed. All boards that answer are now kept as candidates, and one is adopted
+  only once a title matches. Seen on the first run over 115 stored Arbeitsagentur
+  listings: 3 of the 12 "found" boards belonged to other companies.
+- **SmartRecruiters probe paginates.** Large tenants (ALTEN: 1,176 postings) list the
+  wanted role beyond the first 100, so the title never matched.
+
 ## [0.5.0] — 2026-10-25
 
 ### Added
