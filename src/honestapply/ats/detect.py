@@ -11,6 +11,16 @@ WORKDAY = "workday"
 SMARTRECRUITERS = "smartrecruiters"
 LINKEDIN = "linkedin"
 INSTAHYRE = "instahyre"
+# Feed-based boards common with German employers (public JSON/XML, no auth).
+PERSONIO = "personio"
+RECRUITEE = "recruitee"
+WORKABLE = "workable"
+TEAMTAILOR = "teamtailor"
+JOIN = "join"
+# The Bundesagentur für Arbeit Jobbörse is a discovery source, not an apply
+# channel: its listing pages hide the employer's contact/apply link behind an
+# image CAPTCHA, so a job whose URL still points there has no automatable form.
+ARBEITSAGENTUR = "arbeitsagentur"
 # German/DACH portals that sit behind a mandatory account/login wall — no guest
 # apply exists, so they can never be completed unattended.
 UMANTIS = "umantis"
@@ -44,7 +54,25 @@ def detect_ats(url: str) -> str:
         return LINKEDIN
     if "instahyre.com" in host:
         return INSTAHYRE
+    if "jobs.personio.de" in host or "jobs.personio.com" in host:
+        return PERSONIO
+    if host.endswith(".recruitee.com"):
+        return RECRUITEE
+    if "workable.com" in host:
+        return WORKABLE
+    if host.endswith(".teamtailor.com"):
+        return TEAMTAILOR
+    if host == "join.com" or host.endswith(".join.com"):
+        return JOIN
+    if host.endswith("arbeitsagentur.de"):
+        return ARBEITSAGENTUR
     return GENERIC
+
+
+def is_source_only(ats_type: str | None) -> bool:
+    """True when the URL is a job-board listing with no automatable apply form
+    (the Arbeitsagentur detail page). Such jobs are sourced, never applied to."""
+    return (ats_type or "") == ARBEITSAGENTUR
 
 
 def is_account_walled(ats_type: str | None) -> bool:

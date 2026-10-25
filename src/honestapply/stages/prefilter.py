@@ -31,6 +31,15 @@ log = get_logger(__name__)
 # Hosts that do not yield real submissions: Indeed postings expire fast and route
 # to needs_human; LinkedIn is disabled by the apply ban-guard.
 DEAD_HOST_MARKERS = ("indeed.", "linkedin.")
+# Boards we source from but never apply through: the page has no automatable
+# form (the Arbeitsagentur detail page gates the employer link behind a CAPTCHA).
+# Discovery tries to swap these for the employer's own posting first; whatever
+# still points here is dropped unless HONESTAPPLY_ARBEITSAGENTUR_APPLY is on.
+SOURCE_ONLY_HOSTS = ("arbeitsagentur.de",)
+SOURCE_ONLY_REASON = (
+    "Arbeitsagentur listing page only (employer apply link is CAPTCHA-gated and no "
+    "employer posting was found on a public board; apply manually if wanted)"
+)
 
 # Titles that are clearly outside an AI/ML/software-engineering profile. Matched
 # as whole words/phrases to avoid clobbering legitimate roles (e.g. "Solutions
@@ -87,15 +96,20 @@ def _host(url: str) -> str:
     return (urlparse(url or "").hostname or "").lower()
 
 
-def is_relevant(title: str, url: str = "", location: str = "") -> tuple[bool, str]:
+def is_relevant(
+    title: str, url: str = "", location: str = "", allow_source_only: bool = False
+) -> tuple[bool, str]:
     """Cheap relevance verdict. Returns (keep, reason_if_dropped).
 
     Conservative: only returns False on strong negative signals so the LLM gate
-    still decides every borderline case.
+    still decides every borderline case. ``allow_source_only`` keeps jobs that
+    still point at a source-only board (HONESTAPPLY_ARBEITSAGENTUR_APPLY).
     """
     host = _host(url)
     if any(marker in host for marker in DEAD_HOST_MARKERS):
         return False, "dead host (Indeed expires / LinkedIn ban-guard)"
+    if not allow_source_only and any(host == h or host.endswith("." + h) for h in SOURCE_ONLY_HOSTS):
+        return False, SOURCE_ONLY_REASON
     if title and _IRRELEVANT_TITLE.search(title):
         return False, "title not engineering/AI-relevant"
     # NOTE: the title-mismatch drops (_HARD_MISMATCH / _SOFT_MISMATCH) are
@@ -122,6 +136,9 @@ PRE_APPLY_STATUSES = (
 
 def run_prefilter(ids: list[int] | None = None, limit: int | None = None) -> dict:
     """Route clearly-irrelevant pre-apply jobs to SKIPPED_LOW_FIT (no LLM, no network)."""
+    from honestapply.config import get_settings
+
+    allow_source_only = bool(getattr(get_settings(), "honestapply_arbeitsagentur_apply", False))
     scanned = dropped = 0
     with session_scope() as session:
         query = session.query(Job).filter(Job.status.in_(PRE_APPLY_STATUSES))
@@ -131,7 +148,9 @@ def run_prefilter(ids: list[int] | None = None, limit: int | None = None) -> dic
             query = query.limit(limit)
         for job in query.all():
             scanned += 1
-            keep, reason = is_relevant(job.title or "", job.url or "", job.location or "")
+            keep, reason = is_relevant(
+                job.title or "", job.url or "", job.location or "", allow_source_only=allow_source_only
+            )
             if not keep:
                 job.status = Status.SKIPPED_LOW_FIT
                 job.status_reason = f"prefilter: {reason}"
