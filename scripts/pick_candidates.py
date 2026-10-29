@@ -9,8 +9,13 @@ letting the larger backlog crowd out the smaller market.
 
 Prints a comma-separated ID list on stdout (empty if nothing is eligible).
 
-Employers that have already sent a rejection are excluded: re-applying to a
-company that passed on the profile wastes a slot against the daily cap.
+Employer blacklist (see `blocked_companies`): a company is skipped when it
+rejected the profile within the last --reject-days (default 60), when it has
+rejected --max-rejections or more postings in total (default 3), or when
+--ghost-apps or more applications (default 2) have sat unanswered for longer
+than --ghost-days (default 21). Older single rejections do not block: a
+CV-screen "no" from months ago is noise, and several employers explicitly
+invite re-applying.
 """
 from __future__ import annotations
 
@@ -205,6 +210,95 @@ def _title_rank(title: str) -> int:
     return 0
 
 # Statuses that still have somewhere to go in the pipeline.
+# Legal forms only. Generic words (Labs, Group, Solutions) stay: dropping them
+# would fold distinct employers such as "Acme Labs" and "Acme" into one key.
+_LEGAL_SUFFIX = re.compile(
+    r"\b(gmbh|ag|se|kg|kgaa|mbh|ug|e\.?v\.?|inc|corp|co|ltd|limited|llc|plc|bv|b\.v\.|"
+    r"sas|sa|srl|oy|ab|as|aps|s\.?p\.?a\.?)\b\.?",
+    re.IGNORECASE,
+)
+
+
+def company_key(name: str | None) -> str:
+    """Normalise an employer name so "KI group GmbH" and "KI Group" compare equal.
+
+    Lower-cases, drops legal-form and generic suffixes, and collapses punctuation
+    and whitespace. Used for every company-level comparison in this script so a
+    blacklist entry written from one job board matches the same employer on
+    another.
+    """
+    s = (name or "").lower().replace("&", " and ")
+    s = _LEGAL_SUFFIX.sub(" ", s)
+    s = re.sub(r"[^a-z0-9äöüß]+", " ", s)
+    return " ".join(s.split())
+
+
+def blocked_companies(
+    session,
+    *,
+    reject_days: int = 60,
+    max_rejections: int = 3,
+    ghost_apps: int = 2,
+    ghost_days: int = 21,
+) -> dict[str, str]:
+    """Map lower-cased company name -> reason for every employer to skip.
+
+    Three signals, any one of which blocks:
+    - a rejection within the last ``reject_days`` (the employer just said no);
+    - ``max_rejections`` or more rejections ever (the profile does not pass there);
+    - ``ghost_apps`` or more real applications still unanswered after
+      ``ghost_days`` (the employer is not reading them).
+
+    Rejection timing comes from ``job_events`` (the transition into "rejected"),
+    falling back to ``jobs.updated_at`` for rows that predate the event log.
+    """
+    from datetime import datetime, timedelta
+
+    from honestapply.db.models import JobEvent
+
+    now = datetime.utcnow()
+    reject_since = now - timedelta(days=reject_days)
+    ghost_before = now - timedelta(days=ghost_days)
+    out: dict[str, str] = {}
+
+    rejected_at: dict[str, list] = {}
+    for jid, company, updated in session.execute(
+        select(Job.id, Job.company, Job.updated_at).where(Job.status == "rejected")
+    ).all():
+        key = company_key(company)
+        if not key:
+            continue
+        ev = session.execute(
+            select(JobEvent.at)
+            .where(JobEvent.job_id == jid, JobEvent.to_status == "rejected")
+            .order_by(JobEvent.at.desc())
+            .limit(1)
+        ).scalar()
+        rejected_at.setdefault(key, []).append(ev or updated)
+    for key, dates in rejected_at.items():
+        if len(dates) >= max_rejections:
+            out[key] = f"{len(dates)} rejections"
+        elif any(d and d >= reject_since for d in dates):
+            out[key] = f"rejected within {reject_days}d"
+
+    ghosted: dict[str, int] = {}
+    for company in session.execute(
+        select(Job.company)
+        .join(Application, Application.job_id == Job.id)
+        .where(
+            Application.status == "applied",
+            Job.status == "applied",
+            Application.applied_at < ghost_before,
+        )
+    ).scalars():
+        key = company_key(company)
+        ghosted[key] = ghosted.get(key, 0) + 1
+    for key, n in ghosted.items():
+        if n >= ghost_apps:
+            out.setdefault(key, f"{n} applications unanswered >{ghost_days}d")
+    return out
+
+
 _OPEN = [Status.DISCOVERED, Status.ENRICHED, Status.SCORED, Status.TAILORED]
 
 
@@ -212,6 +306,14 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--country", choices=["DE", "IN", "EU", "EU_OTHER"], required=True)
     ap.add_argument("--limit", type=int, default=30)
+    ap.add_argument("--reject-days", type=int, default=60,
+                    help="Block a company that rejected us within this many days.")
+    ap.add_argument("--max-rejections", type=int, default=3,
+                    help="Block a company with this many rejections in total.")
+    ap.add_argument("--ghost-apps", type=int, default=2,
+                    help="Block a company with this many unanswered applications.")
+    ap.add_argument("--ghost-days", type=int, default=21,
+                    help="An application counts as unanswered after this many days.")
     ap.add_argument(
         "--remote-only",
         action="store_true",
@@ -273,16 +375,18 @@ def main() -> None:
         pattern = _DE
 
     with session_scope() as s:
-        # Companies that have ever rejected us — skip every posting of theirs.
-        # "rejected" is written by the Gmail rejection sweep, not by a pipeline
-        # stage, so it has no Status member — match the raw column value.
-        rejected = {
-            (c or "").strip().lower()
-            for c in s.scalars(
-                select(Job.company).where(Job.status == "rejected")
-            ).all()
-        }
-        blocked = rejected | _HARD_EXCLUDE
+        # Employers to skip: recent rejection, repeated rejections, or
+        # applications they never answered. "rejected" is written by the Gmail
+        # sweep, not a pipeline stage, so it has no Status member.
+        blocked = set(
+            blocked_companies(
+                s,
+                reject_days=args.reject_days,
+                max_rejections=args.max_rejections,
+                ghost_apps=args.ghost_apps,
+                ghost_days=args.ghost_days,
+            )
+        ) | {company_key(c) for c in _HARD_EXCLUDE}
 
         # How many real applications each company has already received. Only
         # status='applied' counts — a dry run never reaches the employer, and a
@@ -323,7 +427,7 @@ def main() -> None:
         picked: list[tuple[int, int, str]] = []
         for j in rows:
             company = (j.company or "").strip()
-            if company.lower() in blocked or company.lower() in _BAD_COMPANY:
+            if company_key(company) in blocked or company.lower() in _BAD_COMPANY:
                 continue
             if any(sub in company.lower() for sub in _HARD_EXCLUDE_SUBSTR):
                 continue

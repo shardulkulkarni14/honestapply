@@ -23,6 +23,13 @@ versions may still change behaviour).
   `preserve` mode is unchanged.
 
 ### Changed
+- **Picker employer blacklist is now time- and count-based** (`scripts/pick_candidates.py`,
+  `blocked_companies`). Previously any employer that had ever sent a rejection was
+  skipped for good. An employer is now skipped only if it rejected the profile within
+  `--reject-days` (default 60), has `--max-rejections` or more rejections in total
+  (default 3), or has `--ghost-apps` or more applications (default 2) unanswered for
+  longer than `--ghost-days` (default 21). Employer names are compared after
+  stripping legal forms (`company_key`), so "Example GmbH" and "Example" match.
 - **Scoring applies a hard language rule.** A posting that names a German level the
   profile does not have (B1–C2, "gute Deutschkenntnisse", "in Wort und Schrift",
   "fließend / verhandlungssicher", "fluent / professional" or German as mandatory) is
