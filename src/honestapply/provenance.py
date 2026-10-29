@@ -131,4 +131,15 @@ def attest_job(job, resumes_dir: str | Path) -> Attestation | None:
         return None
     base = load_resume(job.matched_resume_path)
     facts = iter_immutable_strings(base.resume_facts)
+    if getattr(base, "selects", False):
+        # The master is a superset by design; the claims that must be in the
+        # PDF are the ones the tailor kept (written next to the PDF).
+        from honestapply.stages.tailor import TAILORED_YAML_NAME
+
+        kept_path = Path(job.tailored_resume_path).with_name(TAILORED_YAML_NAME)
+        if kept_path.exists():
+            import yaml
+
+            kept = yaml.safe_load(kept_path.read_text(encoding="utf-8")) or {}
+            facts = iter_immutable_strings(kept.get("resume_facts") or {})
     return attest(facts, job.tailored_resume_path)
