@@ -8,7 +8,7 @@ the exact substrings the tailor validator must find verbatim in any output.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -71,6 +71,22 @@ class Resume(BaseModel):
     target_keywords: list[str] = Field(default_factory=list)
     resume_facts: ResumeFacts = Field(default_factory=ResumeFacts)
     summary_variants: list[str] = Field(default_factory=list)
+    # How the tailor stage may use this file:
+    #   "preserve" (default) — every fact string must survive verbatim; the
+    #                          LLM may only reorder, pick a summary and add
+    #                          JD keywords to skills.
+    #   "select"             — this file is a MASTER superset: the LLM picks the
+    #                          bullets, projects and skill items that fit the
+    #                          job and drops the rest. Everything it keeps must
+    #                          be copied verbatim from here; nothing may be
+    #                          added, reworded or moved between entries.
+    #                          Entries marked `optional: true` may be dropped
+    #                          entirely; all others must keep >= 1 bullet.
+    tailoring: Literal["preserve", "select"] = "preserve"
+
+    @property
+    def selects(self) -> bool:
+        return self.tailoring == "select"
 
 
 def load_resume(path: str | Path) -> Resume:

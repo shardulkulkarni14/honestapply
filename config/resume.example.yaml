@@ -11,6 +11,14 @@
 #   * `resume_facts` -> IMMUTABLE. Every string here must survive tailoring
 #     verbatim (substring-checked). Never put anything here that isn't true —
 #     the no-fabrication guard exists to protect you in interviews.
+#   * `tailoring: select` (optional) turns the file into a MASTER superset:
+#     write every true bullet you have; per job the tailor keeps the ones that
+#     fit and drops the rest. Kept strings must still be verbatim copies, in
+#     the same entry; skills may be lists so items are selected one by one;
+#     an experience entry or project marked `optional: true` may be dropped
+#     entirely, everything else keeps at least one bullet. One master file
+#     usually beats many role-specific variants (variants win on keyword
+#     overlap and quietly send a thinner CV).
 # ---------------------------------------------------------------------------
 
 name: "Example — Backend Engineer"

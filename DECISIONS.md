@@ -143,3 +143,12 @@ Newest at the bottom of each phase.
   treats an empty board as "no board" and probes SmartRecruiters last; otherwise every
   company cached as a SmartRecruiters tenant with zero jobs and the search stopped.
 
+- **One master résumé, selection per job (`tailoring: select`, 2026-10-29).** The original
+  model — several role-specific YAMLs, pick one by keyword overlap, keep every fact — had a
+  quiet failure mode: narrower variants match generic postings well, so the thinnest file was
+  sent most often (13 of 36 submissions in one week used an 11-bullet variant). Select mode
+  inverts it: a single superset file, and the LLM chooses a subset. Fabrication safety moves
+  from "every base string present in the output" to "every output string present in the base,
+  in the same entry" plus required-entry/contact/education/language checks; skills become
+  lists so items are selected individually and keyword injection is no longer needed (put the
+  truthful keywords in the master instead). `optional: true` marks entries that may vanish.

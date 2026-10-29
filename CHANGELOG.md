@@ -7,6 +7,28 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
+### Added
+- **Master résumé with per-job selection (`tailoring: select`).** A base résumé
+  can now be a superset: the tailor asks the LLM to keep the bullets, projects
+  and skill items that fit the posting and drop the rest, instead of shipping
+  the whole file. A new validator accepts the output only if every kept string
+  is a verbatim copy from the master in the same entry, contact/education/
+  languages are unchanged, skills items and awards are subsets, and every
+  entry not marked `optional: true` survives with at least one bullet; one
+  retry, then `needs_human`. The kept facts are written next to the PDF
+  (`resume.tailored.yaml`) and provenance attests the PDF against them.
+  Motivation: with many role-specific variants the thinnest file often won the
+  keyword match (one 11-bullet variant was used for 13 of 36 recent
+  submissions), so the detailed résumé was rarely the one sent. The default
+  `preserve` mode is unchanged.
+
+### Changed
+- **Scoring applies a hard language rule.** A posting that names a German level the
+  profile does not have (B1–C2, "gute Deutschkenntnisse", "in Wort und Schrift",
+  "fließend / verhandlungssicher", "fluent / professional" or German as mandatory) is
+  capped at score 4 with the gap flag `german_requirement`. A posting merely written in
+  German is not a requirement and is not penalised.
+
 ## [0.5.1] — 2026-10-25
 
 ### Fixed

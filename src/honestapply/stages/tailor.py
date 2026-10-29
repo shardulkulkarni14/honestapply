@@ -14,9 +14,17 @@ For each Job with status == Status.SCORED (respecting limit):
 
 Returns: count of jobs successfully tailored.
 
+A base résumé with ``tailoring: select`` is a MASTER superset instead: the LLM
+picks the bullets / projects / skill items that fit the job and drops the rest.
+``validate_selection`` then checks that everything kept is a verbatim copy of
+the master, nothing was added or moved between entries, and no non-optional
+entry was dropped.
+
 Also exposes:
     validate_immutable_facts(resume, tailored_yaml_text) -> list[str]
         Returns list of missing fact strings (empty = OK).
+    validate_selection(resume, tailored_data) -> list[str]
+        Returns list of problems with a select-mode output (empty = OK).
 """
 
 from __future__ import annotations
@@ -49,6 +57,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+TAILORED_YAML_NAME = "resume.tailored.yaml"
 
 
 def _load_prompt(name: str, **kwargs) -> str:
@@ -69,6 +78,146 @@ def validate_immutable_facts(resume: Resume, tailored_yaml_text: str) -> list[st
         if _normalise(fact) not in normalised_output:
             missing.append(fact)
     return missing
+
+
+# ---------------------------------------------------------------------------
+# Select mode ("tailoring: select"): the base is a master superset
+# ---------------------------------------------------------------------------
+def _norm_fact(text: str) -> str:
+    """Whitespace-collapsed, ``**bold**``-marker-free form used to compare a
+    kept string with the master (the renderer treats ``**`` as markup only)."""
+    return re.sub(r"\s+", " ", str(text).replace("**", "")).strip()
+
+
+def _strings_of(value) -> list[str]:
+    return [_norm_fact(x) for x in iter_immutable_strings({"_": value})]
+
+
+def _is_optional(item) -> bool:
+    extra = getattr(item, "model_extra", None) or {}
+    return bool(extra.get("optional"))
+
+
+def _skill_items(value) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        return [_norm_fact(x) for x in value if str(x).strip()]
+    return [_norm_fact(x) for x in str(value).split(",") if x.strip()]
+
+
+def validate_selection(resume: Resume, tailored_data: dict) -> list[str]:
+    """Problems with a select-mode output (empty list = accepted).
+
+    Contact, education and languages must match the master exactly. Every
+    experience entry / project that is not ``optional: true`` must be present
+    (same company, title, dates, location / name, description) with at least
+    one bullet; kept bullets must be verbatim bullets of *that same* entry.
+    Skills groups and items, awards and certifications must be subsets of the
+    master. Anything else is reported, never silently accepted.
+    """
+    problems: list[str] = []
+    base = resume.resume_facts
+    facts = tailored_data.get("resume_facts") if isinstance(tailored_data, dict) else None
+    if not isinstance(facts, dict):
+        return ["output has no resume_facts mapping"]
+
+    for section in ("contact", "education", "languages"):
+        want = _strings_of(getattr(base, section))
+        got = _strings_of(facts.get(section))
+        for miss in sorted(set(want) - set(got)):
+            problems.append(f"{section}: missing {miss!r}")
+        for extra in sorted(set(got) - set(want)):
+            problems.append(f"{section}: not in master: {extra!r}")
+
+    def _check_entries(section: str, base_items, out_items, key_fields, label_fn):
+        if out_items is None:
+            out_items = []
+        if not isinstance(out_items, list):
+            problems.append(f"{section}: expected a list")
+            return
+        base_by_key = {}
+        for item in base_items:
+            k = tuple(_norm_fact(getattr(item, f, "")) for f in key_fields)
+            base_by_key[k] = item
+        seen: set[tuple] = set()
+        for raw in out_items:
+            if not isinstance(raw, dict):
+                problems.append(f"{section}: entry is not a mapping: {raw!r}")
+                continue
+            k = tuple(_norm_fact(raw.get(f, "") or "") for f in key_fields)
+            label = label_fn(raw)
+            item = base_by_key.get(k)
+            if item is None:
+                problems.append(f"{section}: entry not in master: {label}")
+                continue
+            if k in seen:
+                problems.append(f"{section}: entry duplicated: {label}")
+                continue
+            seen.add(k)
+            # every scalar field of the kept entry must equal the master's
+            for f, v in raw.items():
+                if f in ("bullets", "optional") or v is None:
+                    continue
+                if _norm_fact(v) != _norm_fact(getattr(item, f, "") or ""):
+                    problems.append(f"{section}: {label}: field {f!r} differs from master")
+            allowed = {_norm_fact(b) for b in getattr(item, "bullets", [])}
+            kept = [b for b in (raw.get("bullets") or []) if str(b).strip()]
+            if allowed and not kept:
+                problems.append(f"{section}: {label}: no bullets kept")
+            for b in kept:
+                if _norm_fact(b) not in allowed:
+                    problems.append(
+                        f"{section}: {label}: bullet not in master entry: {_norm_fact(b)[:90]!r}"
+                    )
+        for k, item in base_by_key.items():
+            if k not in seen and not _is_optional(item):
+                problems.append(f"{section}: required entry dropped: {' / '.join(k)}")
+
+    _check_entries(
+        "experience", base.experience, facts.get("experience"),
+        ("company", "title", "dates"),
+        lambda r: f"{r.get('company', '')} / {r.get('title', '')}",
+    )
+    _check_entries(
+        "projects", base.projects, facts.get("projects"),
+        ("name",),
+        lambda r: str(r.get("name", "")),
+    )
+
+    out_skills = facts.get("skills")
+    if out_skills is None:
+        out_skills = {}
+    if not isinstance(out_skills, dict):
+        problems.append("skills: expected a mapping")
+    else:
+        for group, value in out_skills.items():
+            if group not in base.skills:
+                problems.append(f"skills: group not in master: {group!r}")
+                continue
+            allowed = set(_skill_items(base.skills[group]))
+            kept = _skill_items(value)
+            if not kept:
+                problems.append(f"skills: {group!r}: empty group kept")
+            for it in kept:
+                if it not in allowed:
+                    problems.append(f"skills: {group!r}: item not in master: {it!r}")
+
+    for section in ("awards", "certifications"):
+        allowed = set(_strings_of(getattr(base, section)))
+        for s_ in _strings_of(facts.get(section)):
+            if s_ not in allowed:
+                problems.append(f"{section}: not in master: {s_!r}")
+    return problems
+
+
+def _check_selection(resume: Resume, raw: str) -> tuple[dict, list[str]]:
+    """Parse a select-mode LLM reply and validate it; (data, problems)."""
+    try:
+        data = _parse_yaml_from_llm(raw)
+    except yaml.YAMLError as exc:
+        return {}, [f"invalid YAML: {exc}"]
+    if not isinstance(data, dict):
+        return {}, ["output is not a YAML mapping"]
+    return data, validate_selection(resume, data)
 
 
 def _build_immutable_block(resume: Resume) -> str:
@@ -197,52 +346,84 @@ def _tailor_one(job: Job, provider, resumes: list[Resume]) -> None:
     job.matched_resume_path = str(base_path)
 
     resume_yaml = _get_resume_yaml(best)
-    immutable_block = _build_immutable_block(best)
+    jd_fenced = fence(job.description or "", label="JOB_POSTING", description="job posting")
 
-    prompt = _load_prompt(
-        "tailor",
-        immutable_facts=immutable_block,
-        resume_yaml=resume_yaml,
-        jd_title=job.title or "",
-        jd_text=fence(
-            job.description or "", label="JOB_POSTING", description="job posting"
-        ),
-    )
-
-    # --- first LLM call ---
-    raw = provider.complete(prompt)
-    missing = validate_immutable_facts(best, raw)
-
-    # --- retry once if validation failed ---
-    if missing:
-        logger.warning(
-            "tailor: job %d first attempt missing %d facts, retrying", job.id, len(missing)
+    if best.selects:
+        # --- select mode: the master is a superset; the LLM picks a subset ---
+        prompt = _load_prompt(
+            "tailor_select",
+            resume_yaml=resume_yaml,
+            jd_title=job.title or "",
+            jd_text=jd_fenced,
         )
-        missing_list = "\n".join(f"  - {m}" for m in missing[:10])
-        retry_suffix = (
-            f"\n\n## RETRY CORRECTION\n\nYour previous output was REJECTED because the "
-            f"following immutable facts were not found verbatim in the output:\n{missing_list}\n\n"
-            "You MUST include every one of these strings exactly as written. "
-            "Return the complete YAML again with all facts present."
+        raw = provider.complete(prompt)
+        tailored_data, problems = _check_selection(best, raw)
+        if problems:
+            logger.warning(
+                "tailor: job %d select attempt rejected (%d problems), retrying",
+                job.id, len(problems),
+            )
+            problem_list = "\n".join(f"  - {m}" for m in problems[:15])
+            retry_suffix = (
+                f"\n\n## RETRY CORRECTION\n\nYour previous output was REJECTED by the "
+                f"validator for these reasons:\n{problem_list}\n\n"
+                "Every kept string must be a character-for-character copy from the "
+                "master, in the same entry; non-optional entries must stay with at "
+                "least one bullet; contact, education and languages must be complete "
+                "and unchanged. Return the complete corrected YAML."
+            )
+            raw = provider.complete(prompt + retry_suffix)
+            tailored_data, problems = _check_selection(best, raw)
+        if problems:
+            reason = "selection rejected after retry: " + "; ".join(problems[:5])
+            job.status = Status.NEEDS_HUMAN
+            job.status_reason = reason
+            logger.error("tailor: job %d -> NEEDS_HUMAN: %s", job.id, reason)
+            return
+    else:
+        immutable_block = _build_immutable_block(best)
+        prompt = _load_prompt(
+            "tailor",
+            immutable_facts=immutable_block,
+            resume_yaml=resume_yaml,
+            jd_title=job.title or "",
+            jd_text=jd_fenced,
         )
-        raw = provider.complete(prompt + retry_suffix)
+
+        # --- first LLM call ---
+        raw = provider.complete(prompt)
         missing = validate_immutable_facts(best, raw)
 
-    if missing:
-        reason = "immutable facts missing after retry: " + "; ".join(missing[:5])
-        job.status = Status.NEEDS_HUMAN
-        job.status_reason = reason
-        logger.error("tailor: job %d -> NEEDS_HUMAN: %s", job.id, reason)
-        return
+        # --- retry once if validation failed ---
+        if missing:
+            logger.warning(
+                "tailor: job %d first attempt missing %d facts, retrying", job.id, len(missing)
+            )
+            missing_list = "\n".join(f"  - {m}" for m in missing[:10])
+            retry_suffix = (
+                f"\n\n## RETRY CORRECTION\n\nYour previous output was REJECTED because the "
+                f"following immutable facts were not found verbatim in the output:\n{missing_list}\n\n"
+                "You MUST include every one of these strings exactly as written. "
+                "Return the complete YAML again with all facts present."
+            )
+            raw = provider.complete(prompt + retry_suffix)
+            missing = validate_immutable_facts(best, raw)
 
-    # --- parse the tailored YAML ---
-    try:
-        tailored_data = _parse_yaml_from_llm(raw)
-    except yaml.YAMLError as exc:
-        job.status = Status.NEEDS_HUMAN
-        job.status_reason = f"LLM returned invalid YAML: {exc}"
-        logger.error("tailor: job %d — YAML parse failed: %s", job.id, exc)
-        return
+        if missing:
+            reason = "immutable facts missing after retry: " + "; ".join(missing[:5])
+            job.status = Status.NEEDS_HUMAN
+            job.status_reason = reason
+            logger.error("tailor: job %d -> NEEDS_HUMAN: %s", job.id, reason)
+            return
+
+        # --- parse the tailored YAML ---
+        try:
+            tailored_data = _parse_yaml_from_llm(raw)
+        except yaml.YAMLError as exc:
+            job.status = Status.NEEDS_HUMAN
+            job.status_reason = f"LLM returned invalid YAML: {exc}"
+            logger.error("tailor: job %d — YAML parse failed: %s", job.id, exc)
+            return
 
     # --- build tailored Resume (with safety fallback) ---
     try:
@@ -269,6 +450,22 @@ def _tailor_one(job: Job, provider, resumes: list[Resume]) -> None:
 
     # --- render PDF ---
     output_dir = PATHS.job_output_dir(job.id)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    # The selected/tailored facts, as rendered. Provenance attests the PDF
+    # against this (not the master) when the base is a select-mode superset.
+    (output_dir / TAILORED_YAML_NAME).write_text(
+        yaml.dump(
+            {
+                "name": tailored_resume.name,
+                "base": str(base_path),
+                "tailoring": best.tailoring,
+                "summary": chosen_summary,
+                "resume_facts": tailored_resume.resume_facts.model_dump(),
+            },
+            allow_unicode=True, default_flow_style=False, sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
     pdf_path = render_resume_pdf(
         tailored_resume,
         output_dir / "resume.pdf",
