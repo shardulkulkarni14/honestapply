@@ -72,6 +72,23 @@ Newest at the bottom of each phase.
   `<<<RESULT>>>{...}<<<END>>>` block. `profile.example.json` is an anonymized template;
   everything the user must personalize is listed in a top-level `_TODO_confirm` array.
 
+- **Gmail for the agents (2026-11).** Default stays the project-owned read-only
+  server (own OAuth client, token in `~/.gmail-mcp`): it is scoped, read-only at
+  the server, and independent of whoever is logged into `claude`. Its token can
+  lapse, so `HONESTAPPLY_GMAIL_SOURCE=claude_connector` is an opt-in that uses the
+  account's `claude.ai Gmail` connector instead. Verified facts the design rests
+  on: a headless `claude -p` only sees account connectors when `--strict-mcp-config`
+  is *off*; `--disallowedTools` is honoured under `--dangerously-skip-permissions`
+  and removes the tool from the agent's list ("No such tool available"); a
+  server-level rule (`mcp__<server>`) removes a whole server; rules can be passed
+  comma-joined in one argument; `claude mcp list` prints connectors
+  deterministically as `claude.ai <Name>: …`. Hence connector mode = strict off +
+  deny-list (3 read tools survive) built per run, and the project `gmail` server
+  dropped from the per-run config *and* denied (non-strict mode still loads
+  `.mcp.json`). Not chosen: switching the agent to an allow-list without
+  skip-permissions (unknown built-in tool needs of the browser flow), or an LLM
+  probe of the tool list (non-deterministic).
+
 ## Parallel prepare (2026-09)
 
 - The prepare stages are LLM-bound (`claude -p` spawns a process, 10-60s a call), so

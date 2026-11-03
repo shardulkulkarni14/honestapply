@@ -34,6 +34,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from honestapply import gmail_source as gmail_src
 from honestapply.config import get_settings
 from honestapply.db.events import transition
 from honestapply.db.models import EmailMessage, Job, Status
@@ -219,6 +220,7 @@ def run_inbox(
         seen_ids=seen_block,
         lookback_days=lookback_days,
         max_results=max_results,
+        gmail_source=gmail_src.gmail_source(),
     )
     result = agent_runner(instructions)
     messages = result.get("messages") or []

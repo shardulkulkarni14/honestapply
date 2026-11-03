@@ -25,6 +25,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
+from honestapply import gmail_source as gmail_src
 from honestapply.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -65,6 +66,7 @@ def render_instructions(
     seen_ids: str,
     lookback_days: int,
     max_results: int,
+    gmail_source: str = gmail_src.PROJECT,
 ) -> str:
     """Fill the triage prompt. Plain token replacement (not str.format) so the
     JSON example braces in the template are left untouched — same approach the
@@ -75,6 +77,7 @@ def render_instructions(
         "seen_ids": seen_ids,
         "lookback_days": str(lookback_days),
         "max_results": str(max_results),
+        "gmail_tools": gmail_src.prompt_tools_paragraph(gmail_source),
     }
     for key, value in subs.items():
         template = template.replace("{" + key + "}", value)
@@ -91,9 +94,13 @@ def run_triage_agent(instructions: str, *, timeout: int | None = None) -> dict[s
     wiped when the run ends, so even an attempted save can't land in your home."""
     from honestapply.config import get_settings
 
+    settings = get_settings()
     if timeout is None:
-        timeout = getattr(get_settings(), "honestapply_inbox_timeout_seconds", 600)
+        timeout = getattr(settings, "honestapply_inbox_timeout_seconds", 600)
     model = os.environ.get(_MODEL_ENV, _DEFAULT_MODEL)
+    # No per-run MCP config here (the project server comes from .mcp.json), so in
+    # connector mode this is just the deny-list that fences the account's Gmail.
+    cli_args = gmail_src.claude_cli_args(gmail_src.gmail_source(settings))
 
     jail = tempfile.mkdtemp(prefix="honestapply-gmail-")
     env = {
@@ -105,7 +112,7 @@ def run_triage_agent(instructions: str, *, timeout: int | None = None) -> dict[s
     }
     try:
         proc = subprocess.run(
-            ["claude", "--dangerously-skip-permissions", "--model", model, "-p", instructions],
+            ["claude", "--dangerously-skip-permissions", "--model", model, *cli_args, "-p", instructions],
             capture_output=True,
             text=True,
             timeout=timeout,

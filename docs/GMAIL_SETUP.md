@@ -77,6 +77,38 @@ honestapply status
 honestapply doctor           # shows "Gmail MCP (inbox): connected"
 ```
 
+## Alternative: use your Claude account's Gmail connector
+
+If the project server's token keeps lapsing, the agents can instead read mail
+through the Gmail connector of the Claude account that `claude` is logged into
+(the one you see in `claude mcp list` as `claude.ai Gmail`). Opt in with:
+
+```bash
+HONESTAPPLY_GMAIL_SOURCE=claude_connector   # default: project
+```
+
+That connector is **read-write** and the agents run with permissions skipped, so
+honestapply only allows it behind a hard fence:
+
+- the agent is started **without** `--strict-mcp-config` (otherwise the connector
+  is invisible) and with a `--disallowedTools` deny-list that leaves exactly
+  three tools: `search_threads`, `get_thread`, `get_message`;
+- every other Gmail connector tool (send, reply, forward, drafts, labels, trash,
+  spam) is denied by name, every *other* claude.ai connector is denied at server
+  level (the list comes from `claude mcp list` at run time, plus a pinned set),
+  and the project's own `gmail` server is denied too, so each run has one Gmail
+  path;
+- the prompt names the three tools and nothing else.
+
+Denied tools are removed from the agent's tool list entirely, not merely
+blocked, so the agent cannot call them even if a page or an e-mail asks it to.
+The fence is `honestapply/gmail_source.py`; `tests/test_gmail_source.py` pins it.
+
+Trade-offs: the connector follows your Claude login (anyone running this repo
+under that login reads *that* mailbox, which is why it is opt-in), and the
+"Testing" OAuth client of the project server can be moved to "In production" in
+the Google Cloud console instead, after which its token stops expiring.
+
 ## Notes
 
 - **honestapply-owned & account-independent.** The OAuth client and token are

@@ -45,7 +45,8 @@ So the plaintext lives only in the vault and in memory at the moment of injectio
 
 The account is created under the email in `config/profile.json`. For email
 verification to work, that email must be the one your connected Gmail receives
-(see `docs/GMAIL_SETUP.md`).
+(see `docs/GMAIL_SETUP.md`; `HONESTAPPLY_GMAIL_SOURCE=claude_connector` switches the
+verification read to your Claude account's Gmail connector, fenced to three read tools).
 
 ## Run
 
