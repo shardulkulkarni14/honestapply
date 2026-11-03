@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 import yaml
 from sqlalchemy import func
 
+from honestapply import gmail_source as gmail_src
 from honestapply.ats.detect import detect_ats
 from honestapply.config import (
     HARD_DAILY_CEILING,
@@ -117,6 +118,7 @@ def _build_instructions(
     ats_type: str,
     dry_run: bool,
     account_signup: bool = False,
+    gmail_source: str = gmail_src.PROJECT,
 ) -> tuple[str, Path]:
     """Render apply_browser.md with per-job context. Returns (text, output_path)."""
     template = _load_prompt_template()
@@ -166,6 +168,7 @@ def _build_instructions(
         "fill_plan": fill_plan_str,
         "pre_submit_screenshot_path": str(pre_screenshot.resolve()),
         "post_submit_screenshot_path": str(post_screenshot.resolve()),
+        "gmail_tools": gmail_src.prompt_tools_paragraph(gmail_source),
     }
 
     instructions = _render_template(template, substitutions)
@@ -216,19 +219,23 @@ def _run_claude(
     extra_env: dict[str, str] | None = None,
     notify_cb=None,
     timeout: int = 600,
+    gmail_source: str = gmail_src.PROJECT,
 ) -> dict:
     """Invoke the claude CLI and parse the <<<RESULT>>> block from stdout.
 
-    *mcp_config* is passed as ``--mcp-config <path> --strict-mcp-config`` so the
-    agent uses exactly that server set (account-signup proxy and/or a hosted-browser
-    CDP endpoint). *extra_env* is merged into the subprocess env. When *notify_cb*
-    is given, stdout is streamed and ``notify_cb(payload)`` is called for each
-    ``<<<NOTIFY>>>{…}<<<END>>>`` line the agent emits (so we can ping the human
-    mid-run); otherwise the call is a simple capture."""
+    *mcp_config* is passed as ``--mcp-config <path>``; in the default
+    ``gmail_source="project"`` it is also ``--strict-mcp-config`` so the agent uses
+    exactly that server set (account-signup proxy and/or a hosted-browser CDP
+    endpoint). With ``"claude_connector"`` strict mode is off so the account's
+    Gmail connector is visible, and the deny-list from ``gmail_source`` removes
+    every tool of it except three read tools, plus every other connector and the
+    project's own ``gmail`` server. *extra_env* is merged into the subprocess env.
+    When *notify_cb* is given, stdout is streamed and ``notify_cb(payload)`` is
+    called for each ``<<<NOTIFY>>>{…}<<<END>>>`` line the agent emits (so we can
+    ping the human mid-run); otherwise the call is a simple capture."""
     apply_model = os.environ.get("HONESTAPPLY_APPLY_MODEL", "claude-opus-5")
     cmd = ["claude", "--dangerously-skip-permissions", "--model", apply_model]
-    if mcp_config:
-        cmd += ["--mcp-config", mcp_config, "--strict-mcp-config"]
+    cmd += gmail_src.claude_cli_args(gmail_source, mcp_config=mcp_config)
     cmd += ["-p", instructions_text]
     env = {**os.environ, **extra_env} if extra_env else None
 
@@ -279,13 +286,17 @@ def _build_apply_mcp_config(
     job_id: int | str,
     *,
     via_proxy: bool = False,
+    drop_servers: tuple[str, ...] = (),
 ) -> str:
     """Write a per-run MCP config derived from .mcp.json, optionally wrapping the
     `playwright` server in the secret-injection proxy (*via_proxy*, for account
-    signup). Every other server (e.g. `gmail`) is preserved. Returns its path."""
+    signup). Every other server (e.g. `gmail`) is preserved unless named in
+    *drop_servers*. Returns its path."""
     base = PATHS.root / ".mcp.json"
     cfg = json.loads(base.read_text(encoding="utf-8")) if base.exists() else {}
     servers = cfg.setdefault("mcpServers", {})
+    for name in drop_servers:
+        servers.pop(name, None)
     pw = servers.get("playwright")
     if pw:
         inner = [pw.get("command", "npx"), *pw.get("args", [])]
@@ -331,7 +342,15 @@ def _execute_agent(job: Job, job_url: str, instructions: str, signup_mode: bool,
 
     notify_enabled = notify_mod.is_configured(settings)
     extra_env = _signup_env(job_url) if signup_mode else None
-    mcp_config = _write_signup_mcp_config(job.id) if signup_mode else None
+    source = gmail_src.gmail_source(settings)
+    if source == gmail_src.CLAUDE_CONNECTOR:
+        # One Gmail path per run: the project server is dropped from the config
+        # (and denied by rule, since non-strict mode also loads .mcp.json).
+        mcp_config = _build_apply_mcp_config(
+            job.id, via_proxy=signup_mode, drop_servers=(gmail_src.PROJECT_GMAIL_SERVER,)
+        )
+    else:
+        mcp_config = _write_signup_mcp_config(job.id) if signup_mode else None
     run_timeout = 600
     notify_cb = None
 
@@ -350,6 +369,7 @@ def _execute_agent(job: Job, job_url: str, instructions: str, signup_mode: bool,
         extra_env=extra_env,
         notify_cb=notify_cb,
         timeout=run_timeout,
+        gmail_source=source,
     )
 
 
@@ -446,6 +466,7 @@ def run_apply(
             job_id=job_id,
             ats_type=ats_type,
             dry_run=dry_run,
+            gmail_source=gmail_src.gmail_source(settings),
         )
         print(f"Instructions written to: {out_path}")
         return
@@ -802,6 +823,7 @@ def _process_job(
         ats_type=ats_type,
         dry_run=effective_dry_run,
         account_signup=signup_mode,
+        gmail_source=gmail_src.gmail_source(settings),
     )
     log.info("apply.instructions_written", job_id=job.id, path=str(out_path), signup=signup_mode)
 

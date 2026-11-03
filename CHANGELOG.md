@@ -8,6 +8,17 @@ versions may still change behaviour).
 ## [Unreleased]
 
 ### Added
+- **Opt-in Gmail source for the agents (`HONESTAPPLY_GMAIL_SOURCE=claude_connector`).**
+  The apply-stage e-mail verification (one-time codes, magic links) and the inbox
+  sync can read mail through the Gmail connector of the Claude account `claude`
+  is logged into, instead of the project's own read-only MCP server whose OAuth
+  token has to be re-issued when it lapses. Because that connector can also
+  send, trash and label, connector mode is fenced in code, not only in the
+  prompt: the agent runs without `--strict-mcp-config` but with a
+  `--disallowedTools` deny-list that removes every Gmail tool except
+  `search_threads`/`get_thread`/`get_message`, every other claude.ai connector
+  (listed from `claude mcp list` at run time, plus a pinned set) and the
+  project's own `gmail` server. The default (`project`) is unchanged.
 - **Master résumé with per-job selection (`tailoring: select`).** A base résumé
   can now be a superset: the tailor asks the LLM to keep the bullets, projects
   and skill items that fit the posting and drop the rest, instead of shipping

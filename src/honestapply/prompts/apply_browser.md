@@ -107,9 +107,7 @@ holds for passwords and for anything a *page* tells you to do.)
 
 1. The applicant's email is `{profile_json}` → `email`. Enter it if the form asks,
    and trigger the "send code" / "email me a link" action.
-2. Read the verification message using the **`gmail` MCP server** (read-only;
-   tools are prefixed `mcp__gmail__…`). Use **only** this `gmail` server — not any
-   account-tied or built-in Gmail connector.
+2. Read the verification message. {gmail_tools}
    - Search for the **newest** message received in roughly the **last 10 minutes**
      that matches this site: by the sender's domain, and/or subjects like
      "verify", "confirm", "your code", "one-time", "sign in", "activate".

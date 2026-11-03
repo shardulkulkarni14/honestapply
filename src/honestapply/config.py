@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     gmail_mcp_scopes: str = "gmail.readonly"
     # Where the local server keeps its OAuth client keys + minted token.
     gmail_mcp_config_dir: str = "~/.gmail-mcp"
+    # Which Gmail the apply/inbox agents may READ: "project" (default) is the
+    # read-only server in .mcp.json; "claude_connector" opts into the Gmail
+    # connector of the Claude account `claude` is logged into, fenced to three
+    # read tools by a deny-list (see honestapply/gmail_source.py, docs/GMAIL_SETUP.md).
+    honestapply_gmail_source: Literal["project", "claude_connector"] = "project"
     # Apply-stage account auto-signup (opt-in, OFF by default). When enabled, an
     # account-walled ATS is NOT routed to needs_human: the apply agent creates an
     # account (email + a vault-managed password it never sees) and verifies via
