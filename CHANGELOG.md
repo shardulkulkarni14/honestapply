@@ -8,6 +8,15 @@ versions may still change behaviour).
 ## [Unreleased]
 
 ### Added
+- **Résumé page budget (`RESUME_MAX_PAGES`, default 2).** After tailoring, the PDF's
+  pages are counted. A résumé over budget is re-rendered once in a compact layout
+  (smaller type, tighter margins, same content), then trimmed step by step — awards
+  beyond two, optional projects from the last, project bullets to one, secondary-role
+  bullets, finally primary-role bullets — re-rendering after each step until it fits.
+  Trimming only drops whole items the selection rules already allow dropping, so every
+  kept string is still a verbatim copy; the tailored YAML records what was rendered.
+  A résumé that does not fit even then leaves the job un-tailored with a status reason
+  instead of shipping a three-page CV. `0` disables the check.
 - **Opt-in Gmail source for the agents (`HONESTAPPLY_GMAIL_SOURCE=claude_connector`).**
   The apply-stage e-mail verification (one-time codes, magic links) and the inbox
   sync can read mail through the Gmail connector of the Claude account `claude`

@@ -22,6 +22,7 @@ template authored alongside it:
 from __future__ import annotations
 
 import datetime as _dt
+import re
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -165,6 +166,47 @@ def _html_to_pdf(
     return output_path
 
 
+class ResumeTooLongError(ValueError):
+    """The rendered résumé exceeds the page budget even in the compact layout."""
+
+    def __init__(self, pages: int, max_pages: int) -> None:
+        self.pages, self.max_pages = pages, max_pages
+        super().__init__(f"résumé renders to {pages} pages; the limit is {max_pages}")
+
+
+# Second, denser layout tried before giving up on the page budget: same template,
+# same content, slightly smaller type and tighter margins. Still ATS-plain.
+COMPACT_CSS = """
+@page { margin: 1.3cm 1.5cm; }
+body { font-size: 10pt; line-height: 1.32; }
+.summary-text { font-size: 10pt; line-height: 1.35; }
+.skill-row { font-size: 9pt; line-height: 1.3; margin-bottom: 1.5pt; }
+.section { margin-top: 6pt; }
+.section-heading { margin-bottom: 3pt; }
+.experience-entry { margin-bottom: 4pt; }
+.project-entry { margin-bottom: 3.5pt; }
+.exp-bullets li, .project-bullets li, .simple-list li { font-size: 9.5pt; line-height: 1.3; margin-bottom: 1pt; }
+"""
+
+
+def _inject_css(html: str, css: str) -> str:
+    tag = f"<style>{css}</style>"
+    if "</head>" in html:
+        return html.replace("</head>", tag + "</head>", 1)
+    return tag + html
+
+
+def count_pdf_pages(path: str | Path) -> int:
+    """Page count of a rendered PDF (pypdf; falls back to a byte scan)."""
+    try:
+        from pypdf import PdfReader
+
+        return len(PdfReader(str(path)).pages)
+    except Exception:  # pragma: no cover - pypdf missing or odd file
+        data = Path(path).read_bytes()
+        return max(1, len(re.findall(rb"/Type\s*/Page[^s]", data)))
+
+
 def render_resume_pdf(
     resume: Resume,
     output_path: str | Path,
@@ -174,14 +216,31 @@ def render_resume_pdf(
     template: str = DEFAULT_TEMPLATE,
     accent: str = DEFAULT_ACCENT,
     renderer: str | None = None,
+    max_pages: int | None = None,
 ) -> Path:
+    """Render the résumé PDF.
+
+    With `max_pages`, the page count is checked after rendering. A résumé that
+    spills over is re-rendered once in the compact layout (COMPACT_CSS); if it
+    still does not fit, ResumeTooLongError is raised so the caller can trim
+    content instead of shipping a three-page CV. Content is never changed here.
+    """
     html = render_resume_html(
         resume, summary=summary, experience_order=experience_order,
         template=template, accent=accent,
     )
-    return _html_to_pdf(
-        html, Path(output_path), base_url=str(TEMPLATES_DIR), renderer=renderer
-    )
+    out = Path(output_path)
+    _html_to_pdf(html, out, base_url=str(TEMPLATES_DIR), renderer=renderer)
+    if max_pages is None:
+        return out
+    pages = count_pdf_pages(out)
+    if pages <= max_pages:
+        return out
+    _html_to_pdf(_inject_css(html, COMPACT_CSS), out, base_url=str(TEMPLATES_DIR), renderer=renderer)
+    pages = count_pdf_pages(out)
+    if pages <= max_pages:
+        return out
+    raise ResumeTooLongError(pages, max_pages)
 
 
 # ---------------------------------------------------------------------------
