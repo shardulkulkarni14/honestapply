@@ -42,7 +42,7 @@ from honestapply.db.session import session_scope
 from honestapply.llm.base import LLMProvider, get_provider
 from honestapply.llm.untrusted import fence
 from honestapply.logging_setup import get_logger
-from honestapply.resume.renderer import render_resume_pdf
+from honestapply.resume.renderer import ResumeTooLongError, render_resume_pdf
 from honestapply.resume.schema import (
     Resume,
     iter_immutable_strings,
@@ -298,6 +298,87 @@ def resume_fits_job_location(resume: Resume, job_location: str) -> bool:
     return False
 
 
+# --- page budget -----------------------------------------------------------
+# Trimming steps tried, in order, when the rendered résumé exceeds the page
+# budget. Each step only DROPS whole items that the selection rules already
+# allow dropping (optional projects, awards, surplus bullets); it never edits a
+# string, so every kept fact stays a verbatim copy. Non-optional entries keep at
+# least one bullet.
+_PRIMARY_BULLET_STEPS = (8, 7, 6, 5)
+_OTHER_BULLET_STEPS = (3, 2)
+
+
+def _cap_bullets(entries: list[dict], primary_cap: int, other_cap: int) -> bool:
+    changed = False
+    for i, e in enumerate(entries):
+        cap = primary_cap if i == 0 else other_cap
+        bullets = e.get("bullets") or []
+        if len(bullets) > max(cap, 1):
+            e["bullets"] = bullets[: max(cap, 1)]
+            changed = True
+    return changed
+
+
+def shrink_steps(facts: dict):
+    """Yield progressively smaller copies of a resume_facts dict.
+
+    Order: awards beyond two -> optional projects (last first) -> project bullets
+    to one -> secondary-role bullets -> primary-role bullets. Stops when no step
+    changes anything.
+    """
+    import copy
+
+    cur = copy.deepcopy(facts)
+    awards = cur.get("awards") or []
+    if len(awards) > 2:
+        cur["awards"] = awards[:2]
+        yield copy.deepcopy(cur)
+    projects = cur.get("projects") or []
+    while any(p.get("optional") for p in projects) and len(projects) > 1:
+        idx = max(i for i, p in enumerate(projects) if p.get("optional"))
+        projects.pop(idx)
+        cur["projects"] = projects
+        yield copy.deepcopy(cur)
+    if any(len(p.get("bullets") or []) > 1 for p in projects):
+        for p in projects:
+            if p.get("bullets"):
+                p["bullets"] = p["bullets"][:1]
+        yield copy.deepcopy(cur)
+    exp = cur.get("experience") or []
+    for other_cap in _OTHER_BULLET_STEPS:
+        if _cap_bullets(exp, primary_cap=10**6, other_cap=other_cap):
+            yield copy.deepcopy(cur)
+    for primary_cap in _PRIMARY_BULLET_STEPS:
+        if _cap_bullets(exp, primary_cap=primary_cap, other_cap=_OTHER_BULLET_STEPS[-1]):
+            yield copy.deepcopy(cur)
+
+
+def render_within_budget(
+    tailored: Resume, pdf_path: Path, *, summary: str, max_pages: int
+) -> tuple[Resume, Path, int]:
+    """Render `tailored`; if it exceeds `max_pages`, trim via shrink_steps until
+    it fits. Returns (resume actually rendered, pdf path, number of trim steps).
+    Raises ResumeTooLongError when even the smallest version does not fit."""
+    from honestapply.resume.schema import ResumeFacts
+
+    if max_pages <= 0:
+        return tailored, render_resume_pdf(tailored, pdf_path, summary=summary), 0
+    try:
+        return tailored, render_resume_pdf(tailored, pdf_path, summary=summary, max_pages=max_pages), 0
+    except ResumeTooLongError:
+        pass
+    steps = 0
+    last_exc: ResumeTooLongError | None = None
+    for facts in shrink_steps(tailored.resume_facts.model_dump()):
+        steps += 1
+        candidate = tailored.model_copy(update={"resume_facts": ResumeFacts(**facts)})
+        try:
+            return candidate, render_resume_pdf(candidate, pdf_path, summary=summary, max_pages=max_pages), steps
+        except ResumeTooLongError as exc:
+            last_exc = exc
+    raise last_exc or ResumeTooLongError(max_pages + 1, max_pages)
+
+
 def _tailor_one(job: Job, provider, resumes: list[Resume]) -> None:
     jd_text = (job.title or "") + "\n\n" + (job.description or "")
 
@@ -448,9 +529,24 @@ def _tailor_one(job: Job, provider, resumes: list[Resume]) -> None:
         else (best.summary_variants[0] if best.summary_variants else "")
     )
 
-    # --- render PDF ---
+    # --- render PDF (within the page budget) ---
     output_dir = PATHS.job_output_dir(job.id)
     output_dir.mkdir(parents=True, exist_ok=True)
+    from honestapply.config import get_settings
+
+    max_pages = get_settings().resume_max_pages
+    try:
+        tailored_resume, pdf_path, trim_steps = render_within_budget(
+            tailored_resume, output_dir / "resume.pdf",
+            summary=chosen_summary, max_pages=max_pages,
+        )
+    except ResumeTooLongError as exc:
+        job.status_reason = f"résumé does not fit {max_pages} pages ({exc.pages} after trimming)"
+        logger.warning("tailor: job %d — %s", job.id, job.status_reason)
+        return
+    if trim_steps:
+        logger.info("tailor: job %d — trimmed résumé in %d step(s) to fit %d pages",
+                    job.id, trim_steps, max_pages)
     # The selected/tailored facts, as rendered. Provenance attests the PDF
     # against this (not the master) when the base is a select-mode superset.
     (output_dir / TAILORED_YAML_NAME).write_text(
@@ -466,12 +562,6 @@ def _tailor_one(job: Job, provider, resumes: list[Resume]) -> None:
         ),
         encoding="utf-8",
     )
-    pdf_path = render_resume_pdf(
-        tailored_resume,
-        output_dir / "resume.pdf",
-        summary=chosen_summary,
-    )
-
     job.tailored_resume_path = str(pdf_path)
     job.status = Status.TAILORED
     job.status_reason = None

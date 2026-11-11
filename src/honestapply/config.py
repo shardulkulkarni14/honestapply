@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     # optional `[chromium]` extra is installed, else a detected Chrome/Chromium
     # binary. Env var: RESUME_RENDERER.
     resume_renderer: ResumeRendererName = "weasyprint"
+    # Page budget for the rendered résumé. After tailoring, the PDF is rendered,
+    # its pages counted, and a résumé over budget is re-rendered in a compact
+    # layout and then trimmed (optional projects, awards, surplus bullets) until
+    # it fits; a job whose résumé still does not fit is not marked tailored.
+    # Env var: RESUME_MAX_PAGES. 0 disables the check.
+    resume_max_pages: int = 2
 
     # Paths
     honestapply_db_path: str = "data/honestapply.db"
