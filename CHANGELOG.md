@@ -8,6 +8,16 @@ versions may still change behaviour).
 ## [Unreleased]
 
 ### Added
+- **Opt-in steering from your own outcomes (all off by default).**
+  `HONESTAPPLY_EXCLUDE_TITLE_REGEX` drops jobs whose title matches a
+  case-insensitive regex (prefilter and `scripts/pick_candidates.py`).
+  `HONESTAPPLY_SALARY_STATED_BONUS` adds points to the fit score, capped at 10,
+  when the posting states a salary figure or range; the adjustment is noted in the
+  stored reasoning and is never added to a score capped by the hard language rule.
+  `HONESTAPPLY_MIN_SCORE_BY_HOST` (`substring=score,…`) raises the score gate for
+  jobs whose URL contains a substring; a value above 10 holds that host back
+  entirely. An invalid regex or a malformed host entry stops startup with a clear
+  error instead of being ignored.
 - **Résumé page budget (`RESUME_MAX_PAGES`, default 2).** After tailoring, the PDF's
   pages are counted. A résumé over budget is re-rendered once in a compact layout
   (smaller type, tighter margins, same content), then trimmed step by step — awards

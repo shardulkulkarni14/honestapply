@@ -12,6 +12,7 @@ Returns: count of jobs processed (scored + skipped).
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from sqlalchemy import select
@@ -27,6 +28,59 @@ from honestapply.stages._workers import run_pool, run_stage_on_job
 logger = get_logger(__name__)
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
+
+# --- Salary-stated detector (HONESTAPPLY_SALARY_STATED_BONUS) ---------------
+# Deliberately conservative: a posting only counts when a salary-sized amount
+# sits next to a currency AND either forms a range or has a pay word nearby.
+# Company figures (funding raised, revenue) use the same currency notation, so
+# millions/billions and funding/revenue context are excluded explicitly.
+_CUR = r"(?:€|\beur(?:os?)?\b|\$|\busd\b|£|\bgbp\b|\bchf\b)"
+_THOUSANDS = r"(?:[.,\u00a0 ]\d{3}|\d{3}|\s?k\b)"
+_NOT_BIGGER = (
+    r"(?:[.,]\d{2})?(?![.,]?\d)"
+    r"(?!\s?(?:m\b|mn\b|mio\b|million|bn\b|billion|mrd\b|milliarde))"
+)
+_AMOUNT = rf"(?<![\d.,])\d{{2,3}}{_THOUSANDS}{_NOT_BIGGER}"
+_MONEY = re.compile(rf"{_CUR}\s?{_AMOUNT}|{_AMOUNT}\s?{_CUR}", re.IGNORECASE)
+_RANGE = re.compile(
+    rf"(?P<c1>{_CUR}\s?)?(?<![\d.,])\d{{2,3}}{_THOUSANDS}?\s?(?P<c2>{_CUR})?"
+    rf"\s?(?:-|–|—|\bto\b|\bbis\b)\s?"
+    rf"(?P<c3>{_CUR}\s?)?\d{{2,3}}{_THOUSANDS}{_NOT_BIGGER}\s?(?P<c4>{_CUR})?",
+    re.IGNORECASE,
+)
+_PAY_WORD = re.compile(
+    r"(salar(?:y|ies)|gehalt|verg[üu]e?tung|compensation|remuneration|entgelt|"
+    r"\bbrutto|pay range|base pay|\bote\b|per year|per annum|\bp\.\s?a\.|"
+    r"annual(?:ly)?|pro jahr|j[äa]hrlich)",
+    re.IGNORECASE,
+)
+_COMPANY_MONEY = re.compile(
+    r"(rais(?:ed|ing)|funding|funded|finanzierung|invest|series [a-e]\b|seed|"
+    r"valuation|bewertung|revenue|umsatz|\barr\b|turnover|budget)",
+    re.IGNORECASE,
+)
+_PAY_WINDOW = 80  # chars either side of the amount searched for a pay word
+_COMPANY_WINDOW = 40
+
+
+def states_salary(text: str | None) -> bool:
+    """True when the posting text states a salary figure or range."""
+    text = text or ""
+
+    def near(pattern: re.Pattern[str], m: re.Match[str], window: int) -> bool:
+        return bool(pattern.search(text[max(0, m.start() - window): m.end() + window]))
+
+    for m in _RANGE.finditer(text):
+        if near(_COMPANY_MONEY, m, _COMPANY_WINDOW):
+            continue
+        has_currency = any(m.group(g) for g in ("c1", "c2", "c3", "c4"))
+        if has_currency or near(_PAY_WORD, m, _PAY_WINDOW):
+            return True
+    for m in _MONEY.finditer(text):
+        if near(_PAY_WORD, m, _PAY_WINDOW) and not near(_COMPANY_MONEY, m, _COMPANY_WINDOW):
+            return True
+    return False
 
 
 def _load_prompt(name: str, **kwargs) -> str:
@@ -119,6 +173,22 @@ def _score_one(job: Job, provider, profile_summary: str, threshold: int) -> None
     reasoning = str(result.get("reasoning", ""))
     matched_keywords = result.get("matched_keywords", [])
     gap_flags = result.get("gap_flags", [])
+
+    settings = get_settings()
+    # The bonus rewards postings that are transparent about pay. It must never
+    # lift a score the hard language rule capped: that cap is a disqualifier,
+    # not a fit judgement to be traded off against other signals.
+    bonus = settings.honestapply_salary_stated_bonus
+    language_capped = isinstance(gap_flags, list) and "german_requirement" in gap_flags
+    if bonus > 0 and not language_capped and states_salary(description):
+        boosted = min(10, score + bonus)
+        if boosted > score:
+            reasoning = f"{reasoning} (+{boosted - score}: salary stated)".strip()
+            score = boosted
+    # Per-host gates (HONESTAPPLY_MIN_SCORE_BY_HOST) are resolved here, the one
+    # function every caller scores through, so `honestapply score`, the prepare
+    # pool and scripts/batch_drive.py cannot disagree about the gate.
+    threshold = settings.min_score_for(job.url, threshold)
 
     job.score = score
     job.score_reasoning = reasoning
