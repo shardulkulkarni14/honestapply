@@ -28,7 +28,6 @@ import argparse
 import re
 from concurrent.futures import ThreadPoolExecutor
 
-import httpx
 from sqlalchemy import select
 
 from honestapply.config import get_settings
@@ -179,6 +178,11 @@ def _is_live(url: str) -> bool:
     """
     if not url:
         return True
+    # Imported here, not at module level: httpx is not a declared dependency,
+    # and only this probe needs it, so the rest of the picker stays importable
+    # (and testable) on an install without it.
+    import httpx
+
     try:
         r = httpx.get(url, timeout=8.0, follow_redirects=True)
     except Exception:  # noqa: BLE001 — network trouble is not evidence of death
