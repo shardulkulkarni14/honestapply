@@ -16,6 +16,11 @@ rejected --max-rejections or more postings in total (default 3), or when
 than --ghost-days (default 21). Older single rejections do not block: a
 CV-screen "no" from months ago is noise, and several employers explicitly
 invite re-applying.
+
+Two opt-in settings also apply (both empty by default): a job whose title
+matches HONESTAPPLY_EXCLUDE_TITLE_REGEX is never picked, and a job on a host
+with a HONESTAPPLY_MIN_SCORE_BY_HOST rule is skipped when the rule can no longer
+be met (already scored below it, or the rule is above 10).
 """
 from __future__ import annotations
 
@@ -23,9 +28,9 @@ import argparse
 import re
 from concurrent.futures import ThreadPoolExecutor
 
-import httpx
 from sqlalchemy import select
 
+from honestapply.config import get_settings
 from honestapply.db.models import Application, Job, Status
 from honestapply.db.session import session_scope
 from honestapply.stages.prefilter import DEAD_HOST_MARKERS
@@ -173,6 +178,11 @@ def _is_live(url: str) -> bool:
     """
     if not url:
         return True
+    # Imported here, not at module level: httpx is not a declared dependency,
+    # and only this probe needs it, so the rest of the picker stays importable
+    # (and testable) on an install without it.
+    import httpx
+
     try:
         r = httpx.get(url, timeout=8.0, follow_redirects=True)
     except Exception:  # noqa: BLE001 — network trouble is not evidence of death
@@ -374,6 +384,9 @@ def main() -> None:
     else:
         pattern = _DE
 
+    settings = get_settings()
+    exclude_title = settings.exclude_title_pattern
+
     with session_scope() as s:
         # Employers to skip: recent rejection, repeated rejections, or
         # applications they never answered. "rejected" is written by the Gmail
@@ -440,6 +453,19 @@ def main() -> None:
             # calls (enrich/score/tailor/cover) before apply rejects it as
             # "Indeed posting" or "LinkedIn Easy Apply disabled".
             if any(marker in (j.url or "").lower() for marker in DEAD_HOST_MARKERS):
+                continue
+
+            # The user's own title exclusion. Checked here as well as in
+            # prefilter because the picker is also run on its own.
+            if exclude_title is not None and exclude_title.search(j.title or ""):
+                continue
+
+            # Per-host gate, host rules only (base 0): the global minimum is left
+            # to the score stage so an ad-hoc `batch_drive --min-score` still
+            # works. Skip when the rule is unreachable (>10) or an existing score
+            # already misses it — either way the LLM calls would be wasted.
+            host_min = settings.min_score_for(j.url, 0)
+            if host_min > 10 or (j.score is not None and j.score < host_min):
                 continue
 
             # Remote-only mode (India): the user works from Germany, so an

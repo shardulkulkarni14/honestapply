@@ -8,6 +8,7 @@ example so nothing here depends on a user's gitignored data.
 from __future__ import annotations
 
 import inspect
+import os
 import re
 import shutil
 import threading
@@ -541,6 +542,16 @@ def test_batch_drive_script_prints_the_covered_line(tmp_path, monkeypatch):
     out = subprocess.run(
         [sys.executable, str(root / "scripts" / "batch_drive.py"), "--ids", str(jid), "--workers", "2"],
         capture_output=True, text=True, cwd=root, timeout=120,
+        # The subprocess re-reads the checkout's .env, which the in-process
+        # fixture cannot scrub; pin the gates so a user's own steering there
+        # cannot fail this test.
+        env={
+            **os.environ,
+            "HONESTAPPLY_MIN_SCORE": "7",
+            "HONESTAPPLY_MIN_SCORE_BY_HOST": "",
+            "HONESTAPPLY_EXCLUDE_TITLE_REGEX": "",
+            "HONESTAPPLY_SALARY_STATED_BONUS": "0",
+        },
     )
     assert out.returncode == 0, out.stderr[-500:]
     assert "COVERED (score=8)" in out.stdout

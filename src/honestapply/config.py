@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # --- Hard safety ceiling. Not user-overridable. ---------------------------
@@ -148,6 +149,22 @@ class Settings(BaseSettings):
     honestapply_daily_cap: int = 25
     honestapply_min_score: int = 7
     honestapply_dry_run_first_n: int = 3
+
+    # --- Optional steering (all off by default) -------------------------------
+    # The fit score judges a posting on its text; these three knobs let a user
+    # act on what their own outcomes show instead — e.g. a title level that never
+    # converts, or a board whose applications go unanswered — without editing code.
+    #
+    # Case-insensitive regex. A job whose title matches is dropped by prefilter
+    # and never picked by scripts/pick_candidates.py. Empty = no exclusion.
+    honestapply_exclude_title_regex: str = ""
+    # Points added to the fit score (capped at 10) when the posting states a
+    # salary. Never added to a score capped by the hard language rule. 0 = off.
+    honestapply_salary_stated_bonus: int = Field(default=0, ge=0, le=9)
+    # Stricter gate per host: "substring=score,substring=score". A job whose URL
+    # contains a substring needs at least that score; a value above 10 means the
+    # host never passes. Only ever raises the gate, never lowers it.
+    honestapply_min_score_by_host: str = ""
     # Applying to one employer many times in a row reads as spraying, not
     # interest. An id-ordered queue groups a company's roles together, which can
     # send several back-to-back applications to the same employer in one run. Two
@@ -195,7 +212,45 @@ class Settings(BaseSettings):
     # give up (sleep indefinitely).
     honestapply_llm_pause_give_up_after: int = 3
 
+    @field_validator("honestapply_exclude_title_regex")
+    @classmethod
+    def _check_title_regex(cls, value: str) -> str:
+        # Fail at startup: a typo that compiled lazily would otherwise surface
+        # mid-run, or worse, be swallowed and silently exclude nothing.
+        value = value.strip()
+        if value:
+            try:
+                re.compile(value)
+            except re.error as exc:
+                raise ValueError(
+                    f"HONESTAPPLY_EXCLUDE_TITLE_REGEX is not a valid regex: {exc}"
+                ) from exc
+        return value
+
+    @field_validator("honestapply_min_score_by_host")
+    @classmethod
+    def _check_min_score_by_host(cls, value: str) -> str:
+        parse_min_score_by_host(value)  # raises on a malformed entry
+        return value.strip()
+
     # --- Derived helpers ---
+    @property
+    def exclude_title_pattern(self) -> re.Pattern[str] | None:
+        """Compiled HONESTAPPLY_EXCLUDE_TITLE_REGEX, or None when unset."""
+        raw = self.honestapply_exclude_title_regex
+        return re.compile(raw, re.IGNORECASE) if raw else None
+
+    def min_score_for(self, url: str | None, base: int | None = None) -> int:
+        """The score gate for a job at *url*: *base* (default the global minimum)
+        raised by any HONESTAPPLY_MIN_SCORE_BY_HOST entry whose substring occurs
+        in the URL."""
+        threshold = self.honestapply_min_score if base is None else base
+        haystack = (url or "").lower()
+        for needle, score in parse_min_score_by_host(self.honestapply_min_score_by_host).items():
+            if needle in haystack:
+                threshold = max(threshold, score)
+        return threshold
+
     @property
     def effective_daily_cap(self) -> int:
         return min(self.honestapply_daily_cap, HARD_DAILY_CEILING)
@@ -248,6 +303,28 @@ class Settings(BaseSettings):
             "openai": self.openai_model,
             "stub": "stub",
         }.get(provider, self.anthropic_model)
+
+
+def parse_min_score_by_host(raw: str) -> dict[str, int]:
+    """Parse "substring=score,substring=score" into {lower-cased substring: score}.
+
+    Raises ValueError on a malformed entry rather than skipping it: a silently
+    ignored rule would let through exactly the jobs it was written to hold back.
+    """
+    out: dict[str, int] = {}
+    for entry in (raw or "").split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        needle, sep, score = entry.rpartition("=")
+        needle = needle.strip().lower()
+        if not sep or not needle or not score.strip().isdigit():
+            raise ValueError(
+                f"HONESTAPPLY_MIN_SCORE_BY_HOST: malformed entry {entry!r}; "
+                "expected substring=score, e.g. boards.example.com=9"
+            )
+        out[needle] = int(score)
+    return out
 
 
 @lru_cache(maxsize=1)

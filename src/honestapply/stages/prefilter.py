@@ -97,13 +97,20 @@ def _host(url: str) -> str:
 
 
 def is_relevant(
-    title: str, url: str = "", location: str = "", allow_source_only: bool = False
+    title: str,
+    url: str = "",
+    location: str = "",
+    allow_source_only: bool = False,
+    exclude_title: re.Pattern[str] | None = None,
 ) -> tuple[bool, str]:
     """Cheap relevance verdict. Returns (keep, reason_if_dropped).
 
     Conservative: only returns False on strong negative signals so the LLM gate
     still decides every borderline case. ``allow_source_only`` keeps jobs that
     still point at a source-only board (HONESTAPPLY_ARBEITSAGENTUR_APPLY).
+    ``exclude_title`` is the user's own opt-in title exclusion
+    (HONESTAPPLY_EXCLUDE_TITLE_REGEX); unlike the built-in patterns it is an
+    explicit choice, so it is applied as written.
     """
     host = _host(url)
     if any(marker in host for marker in DEAD_HOST_MARKERS):
@@ -112,6 +119,8 @@ def is_relevant(
         return False, SOURCE_ONLY_REASON
     if title and _IRRELEVANT_TITLE.search(title):
         return False, "title not engineering/AI-relevant"
+    if title and exclude_title is not None and exclude_title.search(title):
+        return False, "title excluded by HONESTAPPLY_EXCLUDE_TITLE_REGEX"
     # NOTE: the title-mismatch drops (_HARD_MISMATCH / _SOFT_MISMATCH) are
     # deliberately NOT applied. Steering away from pre-training/FDE/platform
     # titles also silently removed every role at AI-first labs, whose postings
@@ -138,7 +147,9 @@ def run_prefilter(ids: list[int] | None = None, limit: int | None = None) -> dic
     """Route clearly-irrelevant pre-apply jobs to SKIPPED_LOW_FIT (no LLM, no network)."""
     from honestapply.config import get_settings
 
-    allow_source_only = bool(getattr(get_settings(), "honestapply_arbeitsagentur_apply", False))
+    settings = get_settings()
+    allow_source_only = bool(getattr(settings, "honestapply_arbeitsagentur_apply", False))
+    exclude_title = settings.exclude_title_pattern
     scanned = dropped = 0
     with session_scope() as session:
         query = session.query(Job).filter(Job.status.in_(PRE_APPLY_STATUSES))
@@ -149,7 +160,11 @@ def run_prefilter(ids: list[int] | None = None, limit: int | None = None) -> dic
         for job in query.all():
             scanned += 1
             keep, reason = is_relevant(
-                job.title or "", job.url or "", job.location or "", allow_source_only=allow_source_only
+                job.title or "",
+                job.url or "",
+                job.location or "",
+                allow_source_only=allow_source_only,
+                exclude_title=exclude_title,
             )
             if not keep:
                 job.status = Status.SKIPPED_LOW_FIT

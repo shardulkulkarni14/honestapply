@@ -118,6 +118,11 @@ def run_simulation(num_jobs: int = 5) -> bool:
     # Force offline, mock, isolated DB. Set BEFORE settings are first read.
     os.environ["LLM_PROVIDER"] = "stub"
     os.environ["HONESTAPPLY_APPLY_MOCK"] = "1"
+    # The user's own steering (.env) must not decide the smoke test: a per-host
+    # gate or title exclusion would retire the fake jobs and read as a breakage.
+    os.environ["HONESTAPPLY_EXCLUDE_TITLE_REGEX"] = ""
+    os.environ["HONESTAPPLY_SALARY_STATED_BONUS"] = "0"
+    os.environ["HONESTAPPLY_MIN_SCORE_BY_HOST"] = ""
 
     from honestapply.config import PATHS, get_settings
 
