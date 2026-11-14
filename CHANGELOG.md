@@ -7,6 +7,8 @@ versions may still change behaviour).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-14
+
 ### Added
 - **Opt-in steering from your own outcomes (all off by default).**
   `HONESTAPPLY_EXCLUDE_TITLE_REGEX` drops jobs whose title matches a
@@ -276,7 +278,8 @@ under a hard ceiling, CAPTCHAs routed to a human), the provenance attestation,
 and the review dashboard. Shipped with NOTICE, CONTRIBUTING, Code of Conduct,
 issue/PR templates, and a privacy-first gitignore.
 
-[Unreleased]: https://github.com/shardulkulkarni14/honestapply/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/shardulkulkarni14/honestapply/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/shardulkulkarni14/honestapply/compare/v0.5.1...v0.6.0
 [0.3.1]: https://github.com/shardulkulkarni14/honestapply/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/shardulkulkarni14/honestapply/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/shardulkulkarni14/honestapply/compare/v0.1.0...v0.2.0
